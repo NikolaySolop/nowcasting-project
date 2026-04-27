@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     postgres_password: str
     postgres_host: str = "postgres"
     postgres_port: int = 5432
+    db_pool_size: int = 10
+    db_max_overflow: int = 10
 
     @property
     def database_url(self) -> str:
