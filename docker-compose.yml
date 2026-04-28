@@ -21,20 +21,26 @@ services:
       timeout: 5s
       retries: 10
 
-#  ingestion:
-#    build:
-#      context: ./services/ingestion
-#      dockerfile: Dockerfile
-#
-#    container_name: nowcast-ingestion
-#    restart: unless-stopped
-#
-#    env_file:
-#      - .env
-#
-#    depends_on:
-#      postgres:
-#        condition: service_healthy
+  ingestion:
+    build:
+      context: .
+      dockerfile: ingestion/Dockerfile
+
+    container_name: nowcast-ingestion
+    restart: unless-stopped
+
+    env_file:
+      - .env
+
+    environment:
+      POSTGRES_HOST: postgres_db
+
+    ports:
+      - "8000:8000"
+
+    depends_on:
+      postgres_db:
+        condition: service_healthy
 
 volumes:
   postgres_data:
