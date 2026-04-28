@@ -1,9 +1,9 @@
-from sqlalchemy import DateTime, String, Text, func, Enum as SQLEnum
+from sqlalchemy import Enum as SQLEnum, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from storage.models.base import UUIDMixin, TimestampMixin
+
+from storage.db.base import Base, UUIDMixin, TimestampMixin
 
 from storage.models.enums import SourceType
-
 
 
 class DataSource(UUIDMixin, TimestampMixin, Base):
@@ -19,7 +19,7 @@ class DataSource(UUIDMixin, TimestampMixin, Base):
         String(255),
         nullable=False
     )
-    source_type: Mapped[str] = mapped_column(
+    source_type: Mapped[SourceType | None] = mapped_column(
         SQLEnum(
             SourceType,
             name="source_type_enum",
@@ -29,7 +29,6 @@ class DataSource(UUIDMixin, TimestampMixin, Base):
         ),
         nullable=True,
     )
-
 
     observations: Mapped[list["RawObservation"]] = relationship(
         back_populates="source"

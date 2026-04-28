@@ -1,15 +1,12 @@
-import enum
-
 from sqlalchemy import (
-    BigInteger,
     Boolean,
-    DateTime,
-    Text,
-    func,
     Enum as SQLEnum,
+    String,
+    Text,
 )
-from sqlalchemy.orm import Mapped, mapped_column
-from storage.models.base import Base, UUIDMixin, TimestampMixin
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from storage.db.base import Base, UUIDMixin, TimestampMixin
 
 from storage.models.enums import BlockCode, Frequency, AssetClass, TransformType
 
@@ -98,4 +95,8 @@ class Series(Base, UUIDMixin, TimestampMixin):
         Boolean,
         server_default="true",
         nullable=False,
+    )
+
+    observations: Mapped[list["RawObservation"]] = relationship(
+        back_populates="series",
     )

@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import (
 from storage.config.settings import settings
 
 engine = create_async_engine(
-    url=settings.database_url,
+    url=settings.database_url_async,
     pool_pre_ping=True,
     pool_size=settings.db_pool_size,
     max_overflow=settings.db_max_overflow

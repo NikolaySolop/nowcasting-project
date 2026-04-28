@@ -9,7 +9,7 @@ class SourceType(str, Enum):
     VENDOR = "vendor"
     EXCHANGE = "exchange"
 
-class BlockCode(str, enum.Enum):
+class BlockCode(str, Enum):
     A = "A"
     B = "B"
     C = "C"
@@ -21,7 +21,7 @@ class BlockCode(str, enum.Enum):
     I = "I"
 
 
-class Frequency(str, enum.Enum):
+class Frequency(str, Enum):
     MIN_15 = "15min"
     MIN_30 = "30min"
     DAILY = "daily"
@@ -32,7 +32,7 @@ class Frequency(str, enum.Enum):
     MODEL_STEP = "model_step"
 
 
-class AssetClass(str, enum.Enum):
+class AssetClass(str, Enum):
     FX = "fx"
     RATES = "rates"
     OIL = "oil"
@@ -42,7 +42,7 @@ class AssetClass(str, enum.Enum):
     SANCTIONS = "sanctions"
 
 
-class TransformType(str, enum.Enum):
+class TransformType(str, Enum):
     LEVEL = "level"
     LOG_RETURN = "log_return"
     DIFF = "diff"
