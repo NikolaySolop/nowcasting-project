@@ -42,5 +42,24 @@ services:
       postgres_db:
         condition: service_healthy
 
+  storage_migrations:
+    build:
+      context: .
+      dockerfile: storage/Dockerfile
+
+    container_name: nowcast-storage-migrations
+    profiles:
+      - tools
+
+    env_file:
+      - .env
+
+    environment:
+      POSTGRES_HOST: postgres_db
+
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+
 volumes:
   postgres_data:
