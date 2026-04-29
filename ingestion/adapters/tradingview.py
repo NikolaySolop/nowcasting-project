@@ -119,6 +119,14 @@ class TradingViewAdapter(BaseAdapter):
         if start_from > end_at:
             return []
 
+        # Yahoo chart intraday retention is limited and older ranges return 422.
+        # Clamp start date to supported lookback window so ingestion can continue.
+        max_lookback_days = self._max_intraday_lookback_days(interval_minutes)
+        if max_lookback_days is not None:
+            min_supported = end_at - timedelta(days=max_lookback_days)
+            if start_from < min_supported:
+                start_from = min_supported
+
         yahoo_symbol = str(spec.extra.get("yahoo_symbol") or "").strip()
         if not yahoo_symbol:
             yahoo_symbol = self._to_yahoo_symbol(ticker)
@@ -143,6 +151,10 @@ class TradingViewAdapter(BaseAdapter):
                     "events": "div,splits",
                 }
                 response = await client.get(url, params=params, headers=headers)
+                # Some symbols/ranges return 422 even within nominal limits.
+                # Skip backfill on this chunk and let normal quote flow continue.
+                if response.status_code == 422:
+                    break
                 response.raise_for_status()
                 payload = response.json()
 
@@ -177,6 +189,16 @@ class TradingViewAdapter(BaseAdapter):
                 cursor = chunk_end + timedelta(minutes=interval_minutes)
 
         return observations
+
+    @staticmethod
+    def _max_intraday_lookback_days(interval_minutes: int) -> int | None:
+        if interval_minutes <= 0:
+            return None
+        if interval_minutes < 60:
+            return 60
+        if interval_minutes < 24 * 60:
+            return 730
+        return None
 
     @staticmethod
     def _to_yahoo_symbol(ticker: str) -> str | None:
