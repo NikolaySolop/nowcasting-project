@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import asyncio
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -15,6 +16,7 @@ from ingestion.schemas.observations import ObservationKind, RawObservationIn
 class TradingViewAdapter(BaseAdapter):
     name = "tradingview"
     scanner_url = "https://scanner.tradingview.com/symbol"
+    scanner_url_fallback = "https://symbol-search.tradingview.com/symbol"
     scanner_fields = (
         "close",
         "change",
@@ -35,6 +37,8 @@ class TradingViewAdapter(BaseAdapter):
             raise AdapterError("tradingview adapter requires scrape.extra.ticker or scrape.series_code")
 
         interval_minutes = int(spec.extra.get("interval_minutes", 15))
+        max_retries = int(spec.extra.get("max_retries", 3))
+        retry_delay_seconds = float(spec.extra.get("retry_delay_seconds", 0.6))
         headers = {
             "User-Agent": context.settings.request_user_agent,
             "Accept": "application/json,text/html;q=0.8,*/*;q=0.5",
@@ -50,7 +54,14 @@ class TradingViewAdapter(BaseAdapter):
                     **headers,
                     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 }
-                response = await client.get(str(spec.url), headers=fallback_headers, params=spec.params)
+                response = await self._request_with_retries(
+                    client,
+                    str(spec.url),
+                    headers=fallback_headers,
+                    params=spec.params,
+                    max_retries=max_retries,
+                    retry_delay_seconds=retry_delay_seconds,
+                )
                 response.raise_for_status()
                 price = self._extract_price(response.text)
                 quote = {
@@ -94,16 +105,61 @@ class TradingViewAdapter(BaseAdapter):
         if isinstance(fields, (list, tuple)):
             fields = ",".join(str(field) for field in fields)
 
-        response = await client.get(
+        max_retries = int(extra.get("max_retries", 3))
+        retry_delay_seconds = float(extra.get("retry_delay_seconds", 0.6))
+        scanner_urls = [
             str(extra.get("scanner_url") or self.scanner_url),
-            headers=headers,
-            params={"symbol": ticker, "fields": str(fields)},
-        )
-        response.raise_for_status()
-        payload = response.json()
-        if not isinstance(payload, dict):
-            raise AdapterError("TradingView scanner returned non-object payload")
-        return payload, response
+            str(extra.get("scanner_url_fallback") or self.scanner_url_fallback),
+        ]
+
+        last_error: Exception | None = None
+        for scanner_url in scanner_urls:
+            try:
+                response = await self._request_with_retries(
+                    client,
+                    scanner_url,
+                    headers=headers,
+                    params={"symbol": ticker, "fields": str(fields)},
+                    max_retries=max_retries,
+                    retry_delay_seconds=retry_delay_seconds,
+                )
+                response.raise_for_status()
+                payload = response.json()
+                if not isinstance(payload, dict):
+                    raise AdapterError("TradingView scanner returned non-object payload")
+                return payload, response
+            except (AdapterError, httpx.HTTPError, json.JSONDecodeError) as exc:
+                last_error = exc
+
+        raise AdapterError(f"unable to fetch TradingView quote from scanner endpoints: {last_error}")
+
+    async def _request_with_retries(
+        self,
+        client: httpx.AsyncClient,
+        url: str,
+        *,
+        headers: dict[str, str],
+        params: dict[str, Any] | None,
+        max_retries: int,
+        retry_delay_seconds: float,
+    ) -> httpx.Response:
+        attempts = max(1, max_retries)
+        last_error: Exception | None = None
+        for attempt in range(1, attempts + 1):
+            try:
+                response = await client.get(url, headers=headers, params=params)
+                if response.status_code >= 500 or response.status_code == 429:
+                    response.raise_for_status()
+                return response
+            except httpx.HTTPError as exc:
+                last_error = exc
+                if attempt == attempts:
+                    break
+                await asyncio.sleep(retry_delay_seconds * attempt)
+
+        if last_error is None:
+            raise AdapterError("request failed without explicit error")
+        raise last_error
 
     def _extract_quote_price(self, payload: dict[str, Any]) -> Decimal:
         candidate = payload.get("close")
