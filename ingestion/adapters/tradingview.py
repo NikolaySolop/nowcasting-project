@@ -119,9 +119,12 @@ class TradingViewAdapter(BaseAdapter):
         if start_from > end_at:
             return []
 
+        backfill_interval = str(spec.extra.get("backfill_interval") or f"{interval_minutes}m").strip().lower()
+        interval_timedelta = self._interval_to_timedelta(backfill_interval)
+
         # Yahoo chart intraday retention is limited and older ranges return 422.
-        # Clamp start date to supported lookback window so ingestion can continue.
-        max_lookback_days = self._max_intraday_lookback_days(interval_minutes)
+        # Clamp start date only when fetching intraday ranges so ingestion can continue.
+        max_lookback_days = self._max_intraday_lookback_days_for_interval(backfill_interval)
         if max_lookback_days is not None:
             min_supported = end_at - timedelta(days=max_lookback_days)
             if start_from < min_supported:
@@ -144,9 +147,9 @@ class TradingViewAdapter(BaseAdapter):
             while cursor <= end_at:
                 chunk_end = min(end_at, cursor + chunk_span)
                 params = {
-                    "interval": f"{interval_minutes}m",
+                    "interval": backfill_interval,
                     "period1": str(int(cursor.timestamp())),
-                    "period2": str(int((chunk_end + timedelta(minutes=interval_minutes)).timestamp())),
+                    "period2": str(int((chunk_end + interval_timedelta).timestamp())),
                     "includePrePost": "false",
                     "events": "div,splits",
                 }
@@ -160,7 +163,7 @@ class TradingViewAdapter(BaseAdapter):
 
                 result = payload.get("chart", {}).get("result", [])
                 if not result:
-                    cursor = chunk_end + timedelta(minutes=interval_minutes)
+                    cursor = chunk_end + interval_timedelta
                     continue
 
                 entry = result[0]
@@ -179,26 +182,41 @@ class TradingViewAdapter(BaseAdapter):
                         RawObservationIn(
                             series_code=ticker,
                             source_code=context.source.source_code,
-                            observed_at=observed_at,
+                            observed_at=self._round_time(observed_at, interval_minutes),
                             value_numeric=Decimal(str(close)),
                             kind=ObservationKind.QUOTE,
                             raw_payload={"ticker": ticker, "yahoo_symbol": yahoo_symbol, "source": "yahoo_chart"},
                         )
                     )
 
-                cursor = chunk_end + timedelta(minutes=interval_minutes)
+                cursor = chunk_end + interval_timedelta
 
         return observations
 
     @staticmethod
-    def _max_intraday_lookback_days(interval_minutes: int) -> int | None:
-        if interval_minutes <= 0:
-            return None
-        if interval_minutes < 60:
-            return 60
-        if interval_minutes < 24 * 60:
-            return 730
+    def _max_intraday_lookback_days_for_interval(interval: str) -> int | None:
+        normalized = interval.strip().lower()
+        if normalized.endswith("m"):
+            try:
+                minutes = int(normalized[:-1])
+            except ValueError:
+                return None
+            if minutes < 60:
+                return 60
+            if minutes < 24 * 60:
+                return 730
         return None
+
+    @staticmethod
+    def _interval_to_timedelta(interval: str) -> timedelta:
+        normalized = interval.strip().lower()
+        if normalized.endswith("m"):
+            return timedelta(minutes=max(1, int(normalized[:-1])))
+        if normalized.endswith("h"):
+            return timedelta(hours=max(1, int(normalized[:-1])))
+        if normalized.endswith("d"):
+            return timedelta(days=max(1, int(normalized[:-1])))
+        return timedelta(minutes=1)
 
     @staticmethod
     def _to_yahoo_symbol(ticker: str) -> str | None:
