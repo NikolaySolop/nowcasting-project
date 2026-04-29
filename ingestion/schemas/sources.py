@@ -1,8 +1,9 @@
 from enum import Enum
 from pathlib import Path
+from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field, HttpUrl, field_validator
 
 
 class SourceKind(str, Enum):
@@ -29,8 +30,23 @@ class WebScrapeSpec(BaseModel):
     text_column: str | int | None = None
     series_code: str | None = None
     date_format: str | None = None
+    start_date: datetime | None = None
 
     extra: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("start_date", mode="before")
+    @classmethod
+    def parse_start_date(cls, value: Any) -> Any:
+        if value is None or isinstance(value, datetime):
+            return value
+        if isinstance(value, str):
+            raw = value.strip()
+            for fmt in ("%d.%m.%Y", "%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S"):
+                try:
+                    return datetime.strptime(raw, fmt)
+                except ValueError:
+                    continue
+        return value
 
 
 class CsvSpec(BaseModel):

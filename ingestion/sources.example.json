@@ -30,7 +30,7 @@
       "source_name": "TradingView VIX 15m",
       "source_type": "web",
       "adapter_name": "tradingview",
-      "enabled": false,
+      "enabled": true,
       "schedule_cron": "*/15 * * * *",
       "scrape": {
         "url": "https://www.tradingview.com/symbols/TVC-VIX/",
@@ -38,8 +38,11 @@
         "series_code": "TVC:VIX",
         "extra": {
           "ticker": "TVC:VIX",
-          "interval_minutes": 15
-        }
+          "interval_minutes": 15,
+          "backfill_enabled": true,
+          "yahoo_symbol": "^VIX"
+        },
+        "start_date": "01.01.2015"
       },
       "series": [
         {
@@ -61,8 +64,11 @@
         "series_code": "FX_IDC:USDEUR",
         "extra": {
           "ticker": "FX_IDC:USDEUR",
-          "interval_minutes": 15
-        }
+          "interval_minutes": 15,
+          "backfill_enabled": true,
+          "yahoo_symbol": "EURUSD=X"
+        },
+        "start_date": "01.01.2015"
       },
       "series": [
         {
