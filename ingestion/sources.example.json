@@ -24,6 +24,29 @@
           "series_name": "Example Series"
         }
       ]
+    },
+    {
+      "source_code": "TRADINGVIEW_VIX",
+      "source_name": "TradingView VIX 15m",
+      "source_type": "web",
+      "adapter_name": "tradingview",
+      "enabled": false,
+      "schedule_cron": "*/15 * * * *",
+      "scrape": {
+        "url": "https://www.tradingview.com/symbols/TVC-VIX/",
+        "parser": "text",
+        "series_code": "TVC:VIX",
+        "extra": {
+          "ticker": "TVC:VIX",
+          "interval_minutes": 15
+        }
+      },
+      "series": [
+        {
+          "series_code": "TVC:VIX",
+          "series_name": "CBOE Volatility Index (VIX)"
+        }
+      ]
     }
   ]
 }
