@@ -1,0 +1,29 @@
+{
+  "sources": [
+    {
+      "source_code": "EXAMPLE_WEB_MACRO",
+      "source_name": "Example web macro table",
+      "source_type": "web",
+      "adapter_name": "web",
+      "enabled": false,
+      "schedule_cron": "0 * * * *",
+      "scrape": {
+        "url": "https://example.com/data",
+        "parser": "html_table",
+        "table_selector": "table",
+        "row_selector": "tr",
+        "cell_selector": "td,th",
+        "date_column": 0,
+        "value_column": 1,
+        "series_code": "EXAMPLE_SERIES",
+        "date_format": "%Y-%m-%d"
+      },
+      "series": [
+        {
+          "series_code": "EXAMPLE_SERIES",
+          "series_name": "Example Series"
+        }
+      ]
+    }
+  ]
+}
