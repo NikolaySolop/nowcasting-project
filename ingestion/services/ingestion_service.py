@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -161,8 +161,21 @@ class IngestionService:
     async def _latest_observed_at_by_series(self, source: SourceDefinition) -> dict[str, datetime]:
         storage_source = await self.sources.get_by_source_code(source.source_code)
         if storage_source is None:
-            return {}
-        return await self.observations.latest_observed_at_by_series(storage_source.id)
+            existing: dict[str, datetime] = {}
+        else:
+            existing = await self.observations.latest_observed_at_by_series(storage_source.id)
+
+        start_date = source.scrape.start_date if source.scrape else None
+        if start_date is None:
+            return existing
+
+        if start_date.tzinfo is None:
+            start_date = start_date.replace(tzinfo=timezone.utc)
+        interval_minutes = int((source.scrape.extra or {}).get("interval_minutes", 15))
+        bootstrap_latest = start_date - timedelta(minutes=max(1, interval_minutes))
+        for series in source.series:
+            existing.setdefault(series.series_code, bootstrap_latest)
+        return existing
 
     async def _already_loaded(self, series_id, source_id, observation: RawObservationIn) -> bool:
         stmt = select(RawObservation).where(
