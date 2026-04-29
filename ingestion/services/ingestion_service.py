@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -70,7 +71,8 @@ class IngestionService:
 
     async def _run_source(self, source: SourceDefinition) -> tuple[int, int]:
         adapter = self.registry.build_adapter(source)
-        fetch_result = await self._fetch_with_retries(source, adapter)
+        latest_observed = await self._latest_observed_at_by_series(source)
+        fetch_result = await self._fetch_with_retries(source, adapter, latest_observed)
         for observation in fetch_result.observations:
             observation.vintage_at = fetch_result.loaded_at
 
@@ -110,8 +112,17 @@ class IngestionService:
         )
         return loaded_count, duplicate_count
 
-    async def _fetch_with_retries(self, source: SourceDefinition, adapter: BaseAdapter) -> FetchResult:
-        context = FetchContext(source=source, settings=self.settings)
+    async def _fetch_with_retries(
+        self,
+        source: SourceDefinition,
+        adapter: BaseAdapter,
+        latest_observed_at_by_series: dict[str, datetime],
+    ) -> FetchResult:
+        context = FetchContext(
+            source=source,
+            settings=self.settings,
+            latest_observed_at_by_series=latest_observed_at_by_series,
+        )
         last_error: Exception | None = None
         for attempt in range(1, self.settings.retry_attempts + 1):
             try:
@@ -145,6 +156,13 @@ class IngestionService:
             series_code=series_code,
             series_name=series_definition.series_name if series_definition and series_definition.series_name else series_code,
         )
+
+
+    async def _latest_observed_at_by_series(self, source: SourceDefinition) -> dict[str, datetime]:
+        storage_source = await self.sources.get_by_source_code(source.source_code)
+        if storage_source is None:
+            return {}
+        return await self.observations.latest_observed_at_by_series(storage_source.id)
 
     async def _already_loaded(self, series_id, source_id, observation: RawObservationIn) -> bool:
         stmt = select(RawObservation).where(

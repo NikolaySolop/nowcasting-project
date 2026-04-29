@@ -16,6 +16,7 @@ class AdapterError(RuntimeError):
 class FetchContext:
     source: SourceDefinition
     settings: Settings
+    latest_observed_at_by_series: dict[str, datetime] = field(default_factory=dict)
 
 
 @dataclass
