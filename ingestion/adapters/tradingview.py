@@ -119,6 +119,14 @@ class TradingViewAdapter(BaseAdapter):
         if start_from > end_at:
             return []
 
+        # Yahoo chart intraday retention is limited and older ranges return 422.
+        # Clamp start date to supported lookback window so ingestion can continue.
+        max_lookback_days = self._max_intraday_lookback_days(interval_minutes)
+        if max_lookback_days is not None:
+            min_supported = end_at - timedelta(days=max_lookback_days)
+            if start_from < min_supported:
+                start_from = min_supported
+
         yahoo_symbol = str(spec.extra.get("yahoo_symbol") or "").strip()
         if not yahoo_symbol:
             yahoo_symbol = self._to_yahoo_symbol(ticker)
@@ -126,47 +134,71 @@ class TradingViewAdapter(BaseAdapter):
             return []
 
         url = f"https://query1.finance.yahoo.com/v8/finance/chart/{yahoo_symbol}"
-        params = {
-            "interval": f"{interval_minutes}m",
-            "period1": str(int(start_from.timestamp())),
-            "period2": str(int((end_at + timedelta(minutes=interval_minutes)).timestamp())),
-            "includePrePost": "false",
-            "events": "div,splits",
-        }
+        # Yahoo Chart API limits intraday intervals (e.g., 15m) to a relatively short period.
+        # Pulling data in chunks allows long-range historical backfill from start_date.
+        chunk_span = timedelta(days=int(spec.extra.get("backfill_chunk_days", 59)))
+        observations: list[RawObservationIn] = []
+        cursor = start_from
 
         async with httpx.AsyncClient(timeout=context.settings.request_timeout_seconds, follow_redirects=True) as client:
-            response = await client.get(url, params=params, headers=headers)
-            response.raise_for_status()
-            payload = response.json()
+            while cursor <= end_at:
+                chunk_end = min(end_at, cursor + chunk_span)
+                params = {
+                    "interval": f"{interval_minutes}m",
+                    "period1": str(int(cursor.timestamp())),
+                    "period2": str(int((chunk_end + timedelta(minutes=interval_minutes)).timestamp())),
+                    "includePrePost": "false",
+                    "events": "div,splits",
+                }
+                response = await client.get(url, params=params, headers=headers)
+                # Some symbols/ranges return 422 even within nominal limits.
+                # Skip backfill on this chunk and let normal quote flow continue.
+                if response.status_code == 422:
+                    break
+                response.raise_for_status()
+                payload = response.json()
 
-        result = payload.get("chart", {}).get("result", [])
-        if not result:
-            return []
-        entry = result[0]
-        timestamps = entry.get("timestamp") or []
-        closes = (((entry.get("indicators") or {}).get("quote") or [{}])[0]).get("close") or []
+                result = payload.get("chart", {}).get("result", [])
+                if not result:
+                    cursor = chunk_end + timedelta(minutes=interval_minutes)
+                    continue
 
-        observations: list[RawObservationIn] = []
-        for idx, ts in enumerate(timestamps):
-            if idx >= len(closes):
-                break
-            close = closes[idx]
-            if close is None:
-                continue
-            observed_at = datetime.fromtimestamp(int(ts), tz=timezone.utc)
-            if observed_at < start_from or observed_at > end_at:
-                continue
-            observations.append(
-                RawObservationIn(
-                    series_code=ticker,
-                    source_code=context.source.source_code,
-                    observed_at=observed_at,
-                    value_numeric=Decimal(str(close)),
-                    kind=ObservationKind.QUOTE,
-                    raw_payload={"ticker": ticker, "yahoo_symbol": yahoo_symbol, "source": "yahoo_chart"},
-                )
-            )
+                entry = result[0]
+                timestamps = entry.get("timestamp") or []
+                closes = (((entry.get("indicators") or {}).get("quote") or [{}])[0]).get("close") or []
+                for idx, ts in enumerate(timestamps):
+                    if idx >= len(closes):
+                        break
+                    close = closes[idx]
+                    if close is None:
+                        continue
+                    observed_at = datetime.fromtimestamp(int(ts), tz=timezone.utc)
+                    if observed_at < start_from or observed_at > end_at:
+                        continue
+                    observations.append(
+                        RawObservationIn(
+                            series_code=ticker,
+                            source_code=context.source.source_code,
+                            observed_at=observed_at,
+                            value_numeric=Decimal(str(close)),
+                            kind=ObservationKind.QUOTE,
+                            raw_payload={"ticker": ticker, "yahoo_symbol": yahoo_symbol, "source": "yahoo_chart"},
+                        )
+                    )
+
+                cursor = chunk_end + timedelta(minutes=interval_minutes)
+
         return observations
+
+    @staticmethod
+    def _max_intraday_lookback_days(interval_minutes: int) -> int | None:
+        if interval_minutes <= 0:
+            return None
+        if interval_minutes < 60:
+            return 60
+        if interval_minutes < 24 * 60:
+            return 730
+        return None
 
     @staticmethod
     def _to_yahoo_symbol(ticker: str) -> str | None:
