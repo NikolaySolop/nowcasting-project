@@ -47,6 +47,29 @@
           "series_name": "CBOE Volatility Index (VIX)"
         }
       ]
+    },
+    {
+      "source_code": "TRADINGVIEW_USDEUR",
+      "source_name": "TradingView USD/EUR 15m",
+      "source_type": "web",
+      "adapter_name": "tradingview",
+      "enabled": true,
+      "schedule_cron": "*/15 * * * *",
+      "scrape": {
+        "url": "https://www.tradingview.com/symbols/USDEUR/",
+        "parser": "text",
+        "series_code": "FX_IDC:USDEUR",
+        "extra": {
+          "ticker": "FX_IDC:USDEUR",
+          "interval_minutes": 15
+        }
+      },
+      "series": [
+        {
+          "series_code": "FX_IDC:USDEUR",
+          "series_name": "U.S. Dollar / Euro"
+        }
+      ]
     }
   ]
 }
