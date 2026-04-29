@@ -37,14 +37,19 @@ class TradingViewAdapter(BaseAdapter):
             raise AdapterError("tradingview adapter requires scrape.extra.ticker or scrape.series_code")
 
         interval_minutes = int(spec.extra.get("interval_minutes", 15))
-        max_retries = int(spec.extra.get("max_retries", 3))
-        retry_delay_seconds = float(spec.extra.get("retry_delay_seconds", 0.6))
         headers = {
             "User-Agent": context.settings.request_user_agent,
             "Accept": "application/json,text/html;q=0.8,*/*;q=0.5",
         }
         headers.update(spec.headers)
 
+        if bool(spec.extra.get("backfill_enabled", True)):
+            history = await self._fetch_backfill(context, ticker, interval_minutes, headers)
+            if history:
+                return FetchResult(observations=history)
+
+        max_retries = int(spec.extra.get("max_retries", 3))
+        retry_delay_seconds = float(spec.extra.get("retry_delay_seconds", 0.6))
         async with httpx.AsyncClient(timeout=context.settings.request_timeout_seconds, follow_redirects=True) as client:
             try:
                 quote, response = await self._fetch_quote(client, ticker, headers, spec.extra)
@@ -93,6 +98,82 @@ class TradingViewAdapter(BaseAdapter):
             ],
             raw_payload={"url": str(response.url), "status_code": response.status_code},
         )
+
+    async def _fetch_backfill(
+        self,
+        context: FetchContext,
+        ticker: str,
+        interval_minutes: int,
+        headers: dict[str, str],
+    ) -> list[RawObservationIn]:
+        spec = context.source.scrape
+        if spec is None or spec.start_date is None:
+            return []
+
+        last_observed = context.latest_observed_at_by_series.get(ticker)
+        start_from = spec.start_date if last_observed is None else last_observed + timedelta(minutes=interval_minutes)
+        if start_from.tzinfo is None:
+            start_from = start_from.replace(tzinfo=timezone.utc)
+
+        end_at = self._round_time(datetime.now(timezone.utc), interval_minutes)
+        if start_from > end_at:
+            return []
+
+        yahoo_symbol = str(spec.extra.get("yahoo_symbol") or "").strip()
+        if not yahoo_symbol:
+            yahoo_symbol = self._to_yahoo_symbol(ticker)
+        if not yahoo_symbol:
+            return []
+
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{yahoo_symbol}"
+        params = {
+            "interval": f"{interval_minutes}m",
+            "period1": str(int(start_from.timestamp())),
+            "period2": str(int((end_at + timedelta(minutes=interval_minutes)).timestamp())),
+            "includePrePost": "false",
+            "events": "div,splits",
+        }
+
+        async with httpx.AsyncClient(timeout=context.settings.request_timeout_seconds, follow_redirects=True) as client:
+            response = await client.get(url, params=params, headers=headers)
+            response.raise_for_status()
+            payload = response.json()
+
+        result = payload.get("chart", {}).get("result", [])
+        if not result:
+            return []
+        entry = result[0]
+        timestamps = entry.get("timestamp") or []
+        closes = (((entry.get("indicators") or {}).get("quote") or [{}])[0]).get("close") or []
+
+        observations: list[RawObservationIn] = []
+        for idx, ts in enumerate(timestamps):
+            if idx >= len(closes):
+                break
+            close = closes[idx]
+            if close is None:
+                continue
+            observed_at = datetime.fromtimestamp(int(ts), tz=timezone.utc)
+            if observed_at < start_from or observed_at > end_at:
+                continue
+            observations.append(
+                RawObservationIn(
+                    series_code=ticker,
+                    source_code=context.source.source_code,
+                    observed_at=observed_at,
+                    value_numeric=Decimal(str(close)),
+                    kind=ObservationKind.QUOTE,
+                    raw_payload={"ticker": ticker, "yahoo_symbol": yahoo_symbol, "source": "yahoo_chart"},
+                )
+            )
+        return observations
+
+    @staticmethod
+    def _to_yahoo_symbol(ticker: str) -> str | None:
+        normalized = ticker.split(":")[-1].upper()
+        if len(normalized) == 6 and normalized.isalpha():
+            return f"{normalized}=X"
+        return None
 
     async def _fetch_quote(
         self,
