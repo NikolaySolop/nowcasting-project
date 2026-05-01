@@ -66,7 +66,7 @@
           "ticker": "FX_IDC:USDEUR",
           "interval_minutes": 15,
           "backfill_enabled": true,
-          "yahoo_symbol": "EURUSD=X"
+          "yahoo_symbol": "EUR=X"
         },
         "start_date": "01.01.2015"
       },
@@ -100,32 +100,6 @@
         {
           "series_code": "TVC:DXY",
           "series_name": "U.S. Dollar Index (DXY)"
-        }
-      ]
-    },
-    {
-      "source_code": "TRADINGVIEW_EURUSD",
-      "source_name": "TradingView EUR/USD 15m",
-      "source_type": "web",
-      "adapter_name": "tradingview",
-      "enabled": true,
-      "schedule_cron": "*/15 * * * *",
-      "scrape": {
-        "url": "https://www.tradingview.com/symbols/EURUSD/",
-        "parser": "text",
-        "series_code": "FX_IDC:EURUSD",
-        "extra": {
-          "ticker": "FX_IDC:EURUSD",
-          "interval_minutes": 15,
-          "backfill_enabled": true,
-          "yahoo_symbol": "EURUSD=X"
-        },
-        "start_date": "01.01.2015"
-      },
-      "series": [
-        {
-          "series_code": "FX_IDC:EURUSD",
-          "series_name": "Euro / U.S. Dollar"
         }
       ]
     },
