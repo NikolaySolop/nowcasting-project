@@ -119,16 +119,11 @@ class TradingViewAdapter(BaseAdapter):
         if start_from > end_at:
             return []
 
-        backfill_interval = str(spec.extra.get("backfill_interval") or f"{interval_minutes}m").strip().lower()
-        interval_timedelta = self._interval_to_timedelta(backfill_interval)
-
-        # Yahoo chart intraday retention is limited and older ranges return 422.
-        # Clamp start date only when fetching intraday ranges so ingestion can continue.
-        max_lookback_days = self._max_intraday_lookback_days_for_interval(backfill_interval)
-        if max_lookback_days is not None:
-            min_supported = end_at - timedelta(days=max_lookback_days)
-            if start_from < min_supported:
-                start_from = min_supported
+        primary_interval = str(spec.extra.get("backfill_interval") or f"{interval_minutes}m").strip().lower()
+        backfill_intervals: list[str] = [primary_interval]
+        fallback_interval = str(spec.extra.get("backfill_fallback_interval") or "1d").strip().lower()
+        if fallback_interval and fallback_interval not in backfill_intervals:
+            backfill_intervals.append(fallback_interval)
 
         yahoo_symbol = str(spec.extra.get("yahoo_symbol") or "").strip()
         if not yahoo_symbol:
@@ -137,59 +132,94 @@ class TradingViewAdapter(BaseAdapter):
             return []
 
         url = f"https://query1.finance.yahoo.com/v8/finance/chart/{yahoo_symbol}"
-        # Yahoo Chart API limits intraday intervals (e.g., 15m) to a relatively short period.
-        # Pulling data in chunks allows long-range historical backfill from start_date.
-        chunk_span = timedelta(days=int(spec.extra.get("backfill_chunk_days", 59)))
-        observations: list[RawObservationIn] = []
-        cursor = start_from
-
         async with httpx.AsyncClient(timeout=context.settings.request_timeout_seconds, follow_redirects=True) as client:
-            while cursor <= end_at:
-                chunk_end = min(end_at, cursor + chunk_span)
-                params = {
-                    "interval": backfill_interval,
-                    "period1": str(int(cursor.timestamp())),
-                    "period2": str(int((chunk_end + interval_timedelta).timestamp())),
-                    "includePrePost": "false",
-                    "events": "div,splits",
-                }
-                response = await client.get(url, params=params, headers=headers)
-                # Some symbols/ranges return 422 even within nominal limits.
-                # Skip backfill on this chunk and let normal quote flow continue.
-                if response.status_code == 422:
-                    break
-                response.raise_for_status()
-                payload = response.json()
+            for backfill_interval in backfill_intervals:
+                observations = await self._fetch_backfill_for_interval(
+                    client=client,
+                    url=url,
+                    ticker=ticker,
+                    yahoo_symbol=yahoo_symbol,
+                    source_code=context.source.source_code,
+                    headers=headers,
+                    start_from=start_from,
+                    end_at=end_at,
+                    interval_minutes=interval_minutes,
+                    backfill_interval=backfill_interval,
+                    backfill_chunk_days=int(spec.extra.get("backfill_chunk_days", 59)),
+                )
+                if observations:
+                    return observations
+        return []
 
-                result = payload.get("chart", {}).get("result", [])
-                if not result:
-                    cursor = chunk_end + interval_timedelta
-                    continue
+    async def _fetch_backfill_for_interval(
+        self,
+        client: httpx.AsyncClient,
+        url: str,
+        ticker: str,
+        yahoo_symbol: str,
+        source_code: str,
+        headers: dict[str, str],
+        start_from: datetime,
+        end_at: datetime,
+        interval_minutes: int,
+        backfill_interval: str,
+        backfill_chunk_days: int,
+    ) -> list[RawObservationIn]:
+        interval_timedelta = self._interval_to_timedelta(backfill_interval)
+        adjusted_start = start_from
+        max_lookback_days = self._max_intraday_lookback_days_for_interval(backfill_interval)
+        if max_lookback_days is not None:
+            min_supported = end_at - timedelta(days=max_lookback_days)
+            if adjusted_start < min_supported:
+                adjusted_start = min_supported
 
-                entry = result[0]
-                timestamps = entry.get("timestamp") or []
-                closes = (((entry.get("indicators") or {}).get("quote") or [{}])[0]).get("close") or []
-                for idx, ts in enumerate(timestamps):
-                    if idx >= len(closes):
-                        break
-                    close = closes[idx]
-                    if close is None:
-                        continue
-                    observed_at = datetime.fromtimestamp(int(ts), tz=timezone.utc)
-                    if observed_at < start_from or observed_at > end_at:
-                        continue
-                    observations.append(
-                        RawObservationIn(
-                            series_code=ticker,
-                            source_code=context.source.source_code,
-                            observed_at=self._round_time(observed_at, interval_minutes),
-                            value_numeric=Decimal(str(close)),
-                            kind=ObservationKind.QUOTE,
-                            raw_payload={"ticker": ticker, "yahoo_symbol": yahoo_symbol, "source": "yahoo_chart"},
-                        )
-                    )
+        chunk_span = timedelta(days=backfill_chunk_days)
+        observations: list[RawObservationIn] = []
+        cursor = adjusted_start
+        while cursor <= end_at:
+            chunk_end = min(end_at, cursor + chunk_span)
+            params = {
+                "interval": backfill_interval,
+                "period1": str(int(cursor.timestamp())),
+                "period2": str(int((chunk_end + interval_timedelta).timestamp())),
+                "includePrePost": "false",
+                "events": "div,splits",
+            }
+            response = await client.get(url, params=params, headers=headers)
+            if response.status_code == 422:
+                return []
+            response.raise_for_status()
+            payload = response.json()
 
+            result = payload.get("chart", {}).get("result", [])
+            if not result:
                 cursor = chunk_end + interval_timedelta
+                continue
+
+            entry = result[0]
+            timestamps = entry.get("timestamp") or []
+            closes = (((entry.get("indicators") or {}).get("quote") or [{}])[0]).get("close") or []
+            for idx, ts in enumerate(timestamps):
+                if idx >= len(closes):
+                    break
+                close = closes[idx]
+                if close is None:
+                    continue
+                observed_at = datetime.fromtimestamp(int(ts), tz=timezone.utc)
+                if observed_at < adjusted_start or observed_at > end_at:
+                    continue
+                observations.append(
+                    RawObservationIn(
+                        series_code=ticker,
+                        source_code=source_code,
+                        observed_at=self._round_time(observed_at, interval_minutes),
+                        value_numeric=Decimal(str(close)),
+                        kind=ObservationKind.QUOTE,
+                        raw_payload={"ticker": ticker, "yahoo_symbol": yahoo_symbol, "source": "yahoo_chart"},
+                    )
+                )
+
+            cursor = chunk_end + interval_timedelta
 
         return observations
 
