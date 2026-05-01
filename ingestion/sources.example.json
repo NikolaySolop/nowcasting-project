@@ -76,6 +76,156 @@
           "series_name": "U.S. Dollar / Euro"
         }
       ]
+    },
+    {
+      "source_code": "TRADINGVIEW_DXY",
+      "source_name": "TradingView DXY 15m",
+      "source_type": "web",
+      "adapter_name": "tradingview",
+      "enabled": true,
+      "schedule_cron": "*/15 * * * *",
+      "scrape": {
+        "url": "https://www.tradingview.com/symbols/TVC-DXY/",
+        "parser": "text",
+        "series_code": "TVC:DXY",
+        "extra": {
+          "ticker": "TVC:DXY",
+          "interval_minutes": 15,
+          "backfill_enabled": true,
+          "yahoo_symbol": "DX-Y.NYB"
+        },
+        "start_date": "01.01.2015"
+      },
+      "series": [
+        {
+          "series_code": "TVC:DXY",
+          "series_name": "U.S. Dollar Index (DXY)"
+        }
+      ]
+    },
+    {
+      "source_code": "TRADINGVIEW_EURUSD",
+      "source_name": "TradingView EUR/USD 15m",
+      "source_type": "web",
+      "adapter_name": "tradingview",
+      "enabled": true,
+      "schedule_cron": "*/15 * * * *",
+      "scrape": {
+        "url": "https://www.tradingview.com/symbols/EURUSD/",
+        "parser": "text",
+        "series_code": "FX_IDC:EURUSD",
+        "extra": {
+          "ticker": "FX_IDC:EURUSD",
+          "interval_minutes": 15,
+          "backfill_enabled": true,
+          "yahoo_symbol": "EURUSD=X"
+        },
+        "start_date": "01.01.2015"
+      },
+      "series": [
+        {
+          "series_code": "FX_IDC:EURUSD",
+          "series_name": "Euro / U.S. Dollar"
+        }
+      ]
+    },
+    {
+      "source_code": "TRADINGVIEW_US02Y",
+      "source_name": "TradingView UST 2Y Yield 15m",
+      "source_type": "web",
+      "adapter_name": "tradingview",
+      "enabled": true,
+      "schedule_cron": "*/15 * * * *",
+      "scrape": {
+        "url": "https://www.tradingview.com/symbols/TVC-US02Y/",
+        "parser": "text",
+        "series_code": "TVC:US02Y",
+        "extra": {
+          "ticker": "TVC:US02Y",
+          "interval_minutes": 15,
+          "backfill_enabled": false
+        }
+      },
+      "series": [
+        {
+          "series_code": "TVC:US02Y",
+          "series_name": "U.S. Treasury 2Y Yield"
+        }
+      ]
+    },
+    {
+      "source_code": "TRADINGVIEW_US10Y",
+      "source_name": "TradingView UST 10Y Yield 15m",
+      "source_type": "web",
+      "adapter_name": "tradingview",
+      "enabled": true,
+      "schedule_cron": "*/15 * * * *",
+      "scrape": {
+        "url": "https://www.tradingview.com/symbols/TVC-US10Y/",
+        "parser": "text",
+        "series_code": "TVC:US10Y",
+        "extra": {
+          "ticker": "TVC:US10Y",
+          "interval_minutes": 15,
+          "backfill_enabled": false
+        }
+      },
+      "series": [
+        {
+          "series_code": "TVC:US10Y",
+          "series_name": "U.S. Treasury 10Y Yield"
+        }
+      ]
+    },
+    {
+      "source_code": "TRADINGVIEW_US10Y_US02Y_SPREAD",
+      "source_name": "TradingView UST 10Y-2Y Spread 15m",
+      "source_type": "web",
+      "adapter_name": "tradingview",
+      "enabled": true,
+      "schedule_cron": "*/15 * * * *",
+      "scrape": {
+        "url": "https://www.tradingview.com/chart/?symbol=TVC:US10Y-US02Y",
+        "parser": "text",
+        "series_code": "TVC:US10Y-US02Y",
+        "extra": {
+          "ticker": "TVC:US10Y-US02Y",
+          "interval_minutes": 15,
+          "backfill_enabled": false
+        }
+      },
+      "series": [
+        {
+          "series_code": "TVC:US10Y-US02Y",
+          "series_name": "U.S. Treasury 10Y-2Y Yield Spread"
+        }
+      ]
+    },
+    {
+      "source_code": "TRADINGVIEW_USDRUB",
+      "source_name": "TradingView USD/RUB 15m",
+      "source_type": "web",
+      "adapter_name": "tradingview",
+      "enabled": true,
+      "schedule_cron": "*/15 * * * *",
+      "scrape": {
+        "url": "https://www.tradingview.com/symbols/USDRUB/?exchange=FX_IDC",
+        "parser": "text",
+        "series_code": "FX_IDC:USDRUB",
+        "extra": {
+          "ticker": "FX_IDC:USDRUB",
+          "interval_minutes": 15,
+          "backfill_enabled": true,
+          "yahoo_symbol": "RUB=X"
+        },
+        "start_date": "01.01.2015"
+      },
+      "series": [
+        {
+          "series_code": "FX_IDC:USDRUB",
+          "series_name": "U.S. Dollar / Russian Ruble"
+        }
+      ]
     }
   ]
 }
