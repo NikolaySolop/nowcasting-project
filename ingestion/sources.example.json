@@ -26,6 +26,110 @@
       ]
     },
     {
+      "source_code": "EIA_ECONOMICS_USCOSC",
+      "source_name": "EIA U.S. Crude Oil Stocks Change",
+      "source_type": "api",
+      "adapter_name": "eia",
+      "enabled": true,
+      "schedule_cron": "0 18 * * 3",
+      "scrape": {
+        "parser": "text",
+        "series_code": "ECONOMICS:USCOSC",
+        "start_date": "20.08.1982",
+        "extra": {
+          "eia_series_id": "PET.WCESTUS1.W",
+          "frequency": "weekly",
+          "frequency_code": "W",
+          "transform": "period_diff",
+          "scale": "0.001"
+        }
+      },
+      "series": [
+        {
+          "series_code": "ECONOMICS:USCOSC",
+          "series_name": "United States Crude Oil Stocks Change, million barrels"
+        }
+      ]
+    },
+    {
+      "source_code": "EIA_ECONOMICS_USGSCH",
+      "source_name": "EIA U.S. Gasoline Stocks Change",
+      "source_type": "api",
+      "adapter_name": "eia",
+      "enabled": true,
+      "schedule_cron": "0 18 * * 3",
+      "scrape": {
+        "parser": "text",
+        "series_code": "ECONOMICS:USGSCH",
+        "start_date": "05.01.1990",
+        "extra": {
+          "eia_series_id": "PET.WGTSTUS1.W",
+          "frequency": "weekly",
+          "frequency_code": "W",
+          "transform": "period_diff",
+          "scale": "0.001"
+        }
+      },
+      "series": [
+        {
+          "series_code": "ECONOMICS:USGSCH",
+          "series_name": "United States Gasoline Stocks Change, million barrels"
+        }
+      ]
+    },
+    {
+      "source_code": "EIA_ECONOMICS_USDFS",
+      "source_name": "EIA U.S. Distillate Stocks Change",
+      "source_type": "api",
+      "adapter_name": "eia",
+      "enabled": true,
+      "schedule_cron": "0 18 * * 3",
+      "scrape": {
+        "parser": "text",
+        "series_code": "ECONOMICS:USDFS",
+        "start_date": "20.08.1982",
+        "extra": {
+          "eia_series_id": "PET.WDISTUS1.W",
+          "frequency": "weekly",
+          "frequency_code": "W",
+          "transform": "period_diff",
+          "scale": "0.001"
+        }
+      },
+      "series": [
+        {
+          "series_code": "ECONOMICS:USDFS",
+          "series_name": "United States Distillate Stocks Change, million barrels"
+        }
+      ]
+    },
+    {
+      "source_code": "EIA_ECONOMICS_USCOR",
+      "source_name": "EIA U.S. Crude Oil Rotary Rigs",
+      "source_type": "api",
+      "adapter_name": "eia",
+      "enabled": true,
+      "schedule_cron": "0 18 1 * *",
+      "scrape": {
+        "parser": "text",
+        "series_code": "ECONOMICS:USCOR",
+        "start_date": "01.01.1973",
+        "extra": {
+          "eia_series_id": "PET.E_ERTRRO_XR0_NUS_C.M",
+          "frequency": "monthly",
+          "frequency_code": "M",
+          "transform": "level",
+          "scale": "1"
+        }
+      },
+      "series": [
+        {
+          "series_code": "ECONOMICS:USCOR",
+          "series_name": "United States Crude Oil Rotary Rigs, units"
+        }
+      ]
+    },
+    {
       "source_code": "TRADINGVIEW_VIX",
       "source_name": "TradingView VIX 15m",
       "source_type": "web",
