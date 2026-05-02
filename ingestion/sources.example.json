@@ -39,8 +39,8 @@
         "extra": {
           "ticker": "TVC:VIX",
           "interval_minutes": 15,
-          "backfill_enabled": true,
-          "yahoo_symbol": "^VIX"
+          "history_interval": "1d",
+          "backfill_enabled": true
         },
         "start_date": "01.01.2015"
       },
@@ -65,8 +65,8 @@
         "extra": {
           "ticker": "FX_IDC:USDEUR",
           "interval_minutes": 15,
-          "backfill_enabled": true,
-          "yahoo_symbol": "EUR=X"
+          "history_interval": "1d",
+          "backfill_enabled": true
         },
         "start_date": "01.01.2015"
       },
@@ -91,8 +91,8 @@
         "extra": {
           "ticker": "TVC:DXY",
           "interval_minutes": 15,
-          "backfill_enabled": true,
-          "yahoo_symbol": "DX-Y.NYB"
+          "history_interval": "1d",
+          "backfill_enabled": true
         },
         "start_date": "01.01.2015"
       },
@@ -100,6 +100,32 @@
         {
           "series_code": "TVC:DXY",
           "series_name": "U.S. Dollar Index (DXY)"
+        }
+      ]
+    },
+    {
+      "source_code": "TRADINGVIEW_BRENT_CRUDE_FUTURES",
+      "source_name": "TradingView Brent Crude Futures 15m",
+      "source_type": "web",
+      "adapter_name": "tradingview",
+      "enabled": true,
+      "schedule_cron": "*/15 * * * *",
+      "scrape": {
+        "url": "https://www.tradingview.com/symbols/ICEEUR-BRN1%21/",
+        "parser": "text",
+        "series_code": "ICEEUR:BRN1!",
+        "extra": {
+          "ticker": "ICEEUR:BRN1!",
+          "interval_minutes": 15,
+          "history_interval": "1d",
+          "backfill_enabled": true
+        },
+        "start_date": "01.01.2015"
+      },
+      "series": [
+        {
+          "series_code": "ICEEUR:BRN1!",
+          "series_name": "Brent Crude Futures"
         }
       ]
     },
@@ -189,8 +215,8 @@
         "extra": {
           "ticker": "FX_IDC:USDRUB",
           "interval_minutes": 15,
-          "backfill_enabled": true,
-          "yahoo_symbol": "RUB=X"
+          "history_interval": "1d",
+          "backfill_enabled": true
         },
         "start_date": "01.01.2015"
       },
