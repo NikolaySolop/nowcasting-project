@@ -202,7 +202,136 @@
       ]
     },
     {
-
+      "source_code": "TRADINGVIEW_ICEENDEX_TFM1",
+      "source_name": "TradingView Dutch TTF Natural Gas Futures 1st Contract 15m",
+      "source_type": "web",
+      "adapter_name": "tradingview",
+      "enabled": true,
+      "schedule_cron": "*/15 * * * *",
+      "scrape": {
+        "url": "https://www.tradingview.com/symbols/ICEENDEX-TFM1%21/",
+        "parser": "text",
+        "series_code": "ICEENDEX:TFM1!",
+        "extra": {
+          "ticker": "ICEENDEX:TFM1!",
+          "interval_minutes": 15,
+          "history_interval": "1d",
+          "backfill_enabled": true
+        },
+        "start_date": "02.01.2015"
+      },
+      "series": [
+        {
+          "series_code": "ICEENDEX:TFM1!",
+          "series_name": "Dutch TTF Natural Gas Futures 1st Contract"
+        }
+      ]
+    },
+    {
+      "source_code": "TRADINGVIEW_ICEENDEX_TFM2",
+      "source_name": "TradingView Dutch TTF Natural Gas Futures 2nd Contract 15m",
+      "source_type": "web",
+      "adapter_name": "tradingview",
+      "enabled": true,
+      "schedule_cron": "*/15 * * * *",
+      "scrape": {
+        "url": "https://www.tradingview.com/symbols/ICEENDEX-TFM2%21/",
+        "parser": "text",
+        "series_code": "ICEENDEX:TFM2!",
+        "extra": {
+          "ticker": "ICEENDEX:TFM2!",
+          "interval_minutes": 15,
+          "history_interval": "1d",
+          "backfill_enabled": true
+        },
+        "start_date": "02.01.2015"
+      },
+      "series": [
+        {
+          "series_code": "ICEENDEX:TFM2!",
+          "series_name": "Dutch TTF Natural Gas Futures 2nd Contract"
+        }
+      ]
+    },
+    {
+      "source_code": "TRADINGVIEW_ICEEUR_ULS1",
+      "source_name": "TradingView Low Sulphur Gasoil Futures 15m",
+      "source_type": "web",
+      "adapter_name": "tradingview",
+      "enabled": true,
+      "schedule_cron": "*/15 * * * *",
+      "scrape": {
+        "url": "https://www.tradingview.com/symbols/ICEEUR-ULS1%21/",
+        "parser": "text",
+        "series_code": "ICEEUR:ULS1!",
+        "extra": {
+          "ticker": "ICEEUR:ULS1!",
+          "interval_minutes": 15,
+          "history_interval": "1d",
+          "backfill_enabled": true
+        },
+        "start_date": "02.01.2015"
+      },
+      "series": [
+        {
+          "series_code": "ICEEUR:ULS1!",
+          "series_name": "Low Sulphur Gasoil Futures"
+        }
+      ]
+    },
+    {
+      "source_code": "TRADINGVIEW_NYMEX_GZ1",
+      "source_name": "TradingView NY Harbor ULSD Financial Futures 15m",
+      "source_type": "web",
+      "adapter_name": "tradingview",
+      "enabled": true,
+      "schedule_cron": "*/15 * * * *",
+      "scrape": {
+        "url": "https://www.tradingview.com/symbols/NYMEX-GZ1%21/",
+        "parser": "text",
+        "series_code": "NYMEX:GZ1!",
+        "extra": {
+          "ticker": "NYMEX:GZ1!",
+          "interval_minutes": 15,
+          "history_interval": "1d",
+          "backfill_enabled": true
+        },
+        "start_date": "01.01.2015"
+      },
+      "series": [
+        {
+          "series_code": "NYMEX:GZ1!",
+          "series_name": "NY Harbor ULSD Financial Futures"
+        }
+      ]
+    },
+    {
+      "source_code": "TRADINGVIEW_NYMEX_HO1",
+      "source_name": "TradingView NY Harbor ULSD Futures 15m",
+      "source_type": "web",
+      "adapter_name": "tradingview",
+      "enabled": true,
+      "schedule_cron": "*/15 * * * *",
+      "scrape": {
+        "url": "https://www.tradingview.com/symbols/NYMEX-HO1%21/",
+        "parser": "text",
+        "series_code": "NYMEX:HO1!",
+        "extra": {
+          "ticker": "NYMEX:HO1!",
+          "interval_minutes": 15,
+          "history_interval": "1d",
+          "backfill_enabled": true
+        },
+        "start_date": "01.01.2015"
+      },
+      "series": [
+        {
+          "series_code": "NYMEX:HO1!",
+          "series_name": "NY Harbor ULSD Futures"
+        }
+      ]
+    },
+    {
       "source_code": "TRADINGVIEW_USDRUB",
       "source_name": "TradingView USD/RUB 15m",
       "source_type": "web",
