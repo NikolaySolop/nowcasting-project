@@ -565,6 +565,175 @@
           "series_name": "U.S. Dollar / Russian Ruble"
         }
       ]
+    },
+    {
+      "source_code": "MOEX_RUBCNY_DAILY",
+      "source_name": "MOEX CNY/RUB TOM daily history",
+      "source_type": "exchange",
+      "adapter_name": "moex",
+      "enabled": true,
+      "schedule_cron": "10 20 * * 1-5",
+      "scrape": {
+        "url": "https://iss.moex.com/iss/engines/currency/markets/selt/boards/CETS/securities/",
+        "parser": "text",
+        "series_code": "MOEX:CNYRUB_TOM",
+        "start_date": "01.01.2015",
+        "extra": {
+          "mode": "history_daily",
+          "secid": "CNYRUB_TOM"
+        }
+      },
+      "series": [
+        {
+          "series_code": "MOEX:CNYRUB_TOM",
+          "series_name": "MOEX CNY/RUB TOM, daily close"
+        }
+      ]
+    },
+    {
+      "source_code": "MOEX_RUBCNY_15M",
+      "source_name": "MOEX CNY/RUB TOM online 15m",
+      "source_type": "exchange",
+      "adapter_name": "moex",
+      "enabled": true,
+      "schedule_cron": "*/15 * * * 1-5",
+      "scrape": {
+        "url": "https://iss.moex.com/iss/engines/currency/markets/selt/boards/CETS/securities/",
+        "parser": "text",
+        "series_code": "MOEX:CNYRUB_TOM:15M",
+        "start_date": "01.01.2015",
+        "extra": {
+          "mode": "online_15m",
+          "secid": "CNYRUB_TOM",
+          "interval_minutes": 15,
+          "initial_lookback_days": 5,
+          "session_anchor_time": "09:50:00"
+        }
+      },
+      "series": [
+        {
+          "series_code": "MOEX:CNYRUB_TOM:15M",
+          "series_name": "MOEX CNY/RUB TOM, 15m close aggregated from 1m candles"
+        }
+      ],
+      "metadata": {
+        "note": "MOEX ISS does not publish native interval=15 candles; this source aggregates ISS interval=1 candles into closed 15-minute bars."
+      }
+    },
+    {
+      "source_code": "MOEX_IMOEX_DAILY",
+      "source_name": "MOEX Index daily history",
+      "source_type": "exchange",
+      "adapter_name": "moex",
+      "enabled": true,
+      "schedule_cron": "10 20 * * 1-5",
+      "scrape": {
+        "url": "https://iss.moex.com/iss/engines/stock/markets/index/boards/SNDX/securities/IMOEX",
+        "parser": "text",
+        "series_code": "MOEX:IMOEX",
+        "start_date": "01.01.2015",
+        "extra": {
+          "mode": "history_daily",
+          "secid": "IMOEX"
+        }
+      },
+      "series": [
+        {
+          "series_code": "MOEX:IMOEX",
+          "series_name": "MOEX Russia Index, daily close"
+        }
+      ]
+    },
+    {
+      "source_code": "MOEX_IMOEX_15M",
+      "source_name": "MOEX Index online 15m",
+      "source_type": "exchange",
+      "adapter_name": "moex",
+      "enabled": true,
+      "schedule_cron": "*/15 * * * 1-5",
+      "scrape": {
+        "url": "https://iss.moex.com/iss/engines/stock/markets/index/boards/SNDX/securities/IMOEX",
+        "parser": "text",
+        "series_code": "MOEX:IMOEX:15M",
+        "start_date": "01.01.2015",
+        "extra": {
+          "mode": "online_15m",
+          "secid": "IMOEX",
+          "interval_minutes": 15,
+          "initial_lookback_days": 5,
+          "session_anchor_time": "09:50:00"
+        }
+      },
+      "series": [
+        {
+          "series_code": "MOEX:IMOEX:15M",
+          "series_name": "MOEX Russia Index, 15m close aggregated from 1m candles"
+        }
+      ],
+      "metadata": {
+        "note": "MOEX ISS does not publish native interval=15 candles; this source aggregates ISS interval=1 candles into closed 15-minute bars."
+      }
+    },
+    {
+      "source_code": "CBR_SECINFO_BLIQUIDITY",
+      "source_name": "CBR banking sector structural liquidity",
+      "source_type": "api",
+      "adapter_name": "cbr_secinfo",
+      "enabled": false,
+      "schedule_cron": "30 11 * * 1-5",
+      "scrape": {
+        "url": "https://www.cbr.ru/secinfo/secinfo.asmx",
+        "parser": "text",
+        "date_column": "DT",
+        "start_date": "01.01.2024",
+        "extra": {
+          "operation": "BliquidityXML",
+          "row_tag": "BL",
+          "params": {
+            "OnDate": "$start_date",
+            "ToDate": "$end_date"
+          },
+          "series": [
+            {
+              "series_code": "CBR:BLIQUIDITY:STR_LI_DEF",
+              "value_column": "StrLiDef"
+            },
+            {
+              "series_code": "CBR:BLIQUIDITY:STR_LI_DEF_NEW",
+              "value_column": "StrLiDefNew"
+            },
+            {
+              "series_code": "CBR:BLIQUIDITY:CORR_ACC",
+              "value_column": "CorrAcc"
+            },
+            {
+              "series_code": "CBR:BLIQUIDITY:AVG_RR",
+              "value_column": "AVGRR"
+            }
+          ]
+        }
+      },
+      "series": [
+        {
+          "series_code": "CBR:BLIQUIDITY:STR_LI_DEF",
+          "series_name": "CBR structural liquidity deficit/surplus"
+        },
+        {
+          "series_code": "CBR:BLIQUIDITY:STR_LI_DEF_NEW",
+          "series_name": "CBR structural liquidity deficit/surplus, new methodology"
+        },
+        {
+          "series_code": "CBR:BLIQUIDITY:CORR_ACC",
+          "series_name": "Credit institutions correspondent accounts with CBR"
+        },
+        {
+          "series_code": "CBR:BLIQUIDITY:AVG_RR",
+          "series_name": "Average required reserves"
+        }
+      ],
+      "metadata": {
+        "note": "CBR SecInfo SOAP endpoint. WSDL documentation: Information on securities market, version 25.04.2024."
+      }
     }
   ]
 }
