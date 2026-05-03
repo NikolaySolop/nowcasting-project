@@ -30,8 +30,6 @@ class CbrSecInfoAdapter(BaseAdapter):
             raise AdapterError("CBR SecInfo adapter requires scrape.extra.operation")
 
         endpoint = str(spec.url or extra.get("endpoint") or self.endpoint_url)
-        params = self._request_params(context)
-        envelope = self._soap_envelope(operation, params)
         headers = {
             "User-Agent": context.settings.request_user_agent,
             "Content-Type": "text/xml; charset=utf-8",
@@ -39,21 +37,51 @@ class CbrSecInfoAdapter(BaseAdapter):
         }
         headers.update(spec.headers)
 
+        window_days = int(extra.get("max_range_days") or extra.get("window_days") or 0)
+        start_datetime = self._start_datetime(context)
+        end_datetime = self._end_datetime(context)
+        if window_days > 0 and start_datetime.date() > end_datetime.date():
+            return FetchResult(
+                observations=[],
+                raw_payload={
+                    "url": endpoint,
+                    "operation": operation,
+                    "row_count": 0,
+                    "observation_count": 0,
+                    "requests": [],
+                },
+            )
+
+        observations: list[RawObservationIn] = []
+        request_summaries: list[dict[str, Any]] = []
+        row_count = 0
         async with httpx.AsyncClient(
             timeout=context.settings.request_timeout_seconds,
             follow_redirects=True,
         ) as client:
-            response = await client.post(endpoint, headers=headers, content=envelope.encode("utf-8"))
-            try:
-                response.raise_for_status()
-            except httpx.HTTPStatusError as exc:
-                raise AdapterError(
-                    f"CBR SecInfo HTTP {exc.response.status_code} for {operation}: {exc.response.text[:300]}"
-                ) from exc
+            windows = (
+                self._date_windows(start_datetime, end_datetime, window_days)
+                if window_days > 0
+                else [(start_datetime, end_datetime)]
+            )
+            for window_start, window_end in windows:
+                params = self._request_params(
+                    context,
+                    start_datetime=window_start,
+                    end_datetime=window_end,
+                )
+                window_observations, summary = await self._fetch_window(
+                    client=client,
+                    context=context,
+                    endpoint=endpoint,
+                    operation=operation,
+                    headers=headers,
+                    params=params,
+                )
+                observations.extend(window_observations)
+                row_count += int(summary["row_count"])
+                request_summaries.append(summary)
 
-        result = self._extract_result(response.text, operation, str(extra.get("result_tag") or ""))
-        rows = self._extract_rows(result, str(extra.get("row_tag") or ""))
-        observations = self._rows_to_observations(context, rows)
         if not observations and bool(extra.get("raise_on_empty", False)):
             raise AdapterError(f"CBR SecInfo {operation} returned no observations")
 
@@ -62,15 +90,55 @@ class CbrSecInfoAdapter(BaseAdapter):
             raw_payload={
                 "url": endpoint,
                 "operation": operation,
-                "params": params,
-                "status_code": response.status_code,
-                "content_type": response.headers.get("content-type"),
-                "row_count": len(rows),
+                "row_count": row_count,
                 "observation_count": len(observations),
+                "requests": request_summaries,
             },
         )
 
-    def _request_params(self, context: FetchContext) -> dict[str, str]:
+    async def _fetch_window(
+        self,
+        *,
+        client: httpx.AsyncClient,
+        context: FetchContext,
+        endpoint: str,
+        operation: str,
+        headers: dict[str, str],
+        params: dict[str, str],
+    ) -> tuple[list[RawObservationIn], dict[str, Any]]:
+        spec = context.source.scrape
+        if spec is None:
+            return [], {}
+
+        envelope = self._soap_envelope(operation, params)
+        try:
+            response = await client.post(endpoint, headers=headers, content=envelope.encode("utf-8"))
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            raise AdapterError(
+                f"CBR SecInfo HTTP {exc.response.status_code} for {operation}: {exc.response.text[:300]}"
+            ) from exc
+        except httpx.RequestError as exc:
+            raise AdapterError(f"CBR SecInfo request failed for {operation}: {type(exc).__name__}: {exc!r}") from exc
+
+        result = self._extract_result(response.text, operation, str((spec.extra or {}).get("result_tag") or ""))
+        rows = self._extract_rows(result, str((spec.extra or {}).get("row_tag") or ""))
+        observations = self._rows_to_observations(context, rows)
+        return observations, {
+            "params": params,
+            "status_code": response.status_code,
+            "content_type": response.headers.get("content-type"),
+            "row_count": len(rows),
+            "observation_count": len(observations),
+        }
+
+    def _request_params(
+        self,
+        context: FetchContext,
+        *,
+        start_datetime: datetime | None = None,
+        end_datetime: datetime | None = None,
+    ) -> dict[str, str]:
         spec = context.source.scrape
         if spec is None:
             return {}
@@ -78,7 +146,15 @@ class CbrSecInfoAdapter(BaseAdapter):
         extra = spec.extra or {}
         raw_params = extra.get("params")
         if isinstance(raw_params, dict):
-            return {str(key): self._resolve_param_value(value, context) for key, value in raw_params.items()}
+            return {
+                str(key): self._resolve_param_value(
+                    value,
+                    context,
+                    start_datetime=start_datetime,
+                    end_datetime=end_datetime,
+                )
+                for key, value in raw_params.items()
+            }
 
         if bool(extra.get("no_params", False)):
             return {}
@@ -86,17 +162,24 @@ class CbrSecInfoAdapter(BaseAdapter):
         from_param = str(extra.get("date_from_param") or "DateFrom")
         to_param = str(extra.get("date_to_param") or "DateTo")
         return {
-            from_param: self._format_soap_datetime(self._start_datetime(context)),
-            to_param: self._format_soap_datetime(self._end_datetime(context)),
+            from_param: self._format_soap_datetime(start_datetime or self._start_datetime(context)),
+            to_param: self._format_soap_datetime(end_datetime or self._end_datetime(context)),
         }
 
-    def _resolve_param_value(self, value: Any, context: FetchContext) -> str:
+    def _resolve_param_value(
+        self,
+        value: Any,
+        context: FetchContext,
+        *,
+        start_datetime: datetime | None = None,
+        end_datetime: datetime | None = None,
+    ) -> str:
         if isinstance(value, str):
             marker = value.strip().lower()
             if marker in {"$start_date", "{start_date}"}:
-                return self._format_soap_datetime(self._start_datetime(context))
+                return self._format_soap_datetime(start_datetime or self._start_datetime(context))
             if marker in {"$end_date", "{end_date}", "$today", "{today}"}:
-                return self._format_soap_datetime(self._end_datetime(context))
+                return self._format_soap_datetime(end_datetime or self._end_datetime(context))
         if isinstance(value, datetime):
             return self._format_soap_datetime(value)
         return str(value)
@@ -104,21 +187,42 @@ class CbrSecInfoAdapter(BaseAdapter):
     def _start_datetime(self, context: FetchContext) -> datetime:
         spec = context.source.scrape
         extra = spec.extra if spec is not None else {}
+        date_mode = str(extra.get("date_mode") or "calendar").lower()
         interval_days = int(extra.get("interval_days") or 1)
         latest_values = [
             observed_at for observed_at in context.latest_observed_at_by_series.values() if observed_at is not None
         ]
         if latest_values:
-            return min(latest_values) + timedelta(days=interval_days)
+            return self._calendar_midnight(min(latest_values) + timedelta(days=interval_days), date_mode)
         if spec is not None and spec.start_date is not None:
-            return self._ensure_utc(spec.start_date)
-        return datetime.now(timezone.utc) - timedelta(days=int(extra.get("lookback_days") or 7))
+            return self._calendar_midnight(self._ensure_utc(spec.start_date), date_mode)
+        return self._calendar_midnight(
+            datetime.now(timezone.utc) - timedelta(days=int(extra.get("lookback_days") or 7)),
+            date_mode,
+        )
 
     def _end_datetime(self, context: FetchContext) -> datetime:
         spec = context.source.scrape
         extra = spec.extra if spec is not None else {}
         explicit = self._parse_datetime(extra.get("end_date") or extra.get("to"))
         return explicit or datetime.now(timezone.utc)
+
+    @staticmethod
+    def _date_windows(
+        start_datetime: datetime,
+        end_datetime: datetime,
+        window_days: int,
+    ) -> list[tuple[datetime, datetime]]:
+        if window_days <= 0:
+            return [(start_datetime, end_datetime)]
+
+        windows: list[tuple[datetime, datetime]] = []
+        current = start_datetime
+        while current.date() <= end_datetime.date():
+            window_end = min(current + timedelta(days=window_days - 1), end_datetime)
+            windows.append((current, window_end))
+            current = CbrSecInfoAdapter._calendar_midnight(window_end + timedelta(days=1), "calendar")
+        return windows
 
     def _soap_envelope(self, operation: str, params: dict[str, str]) -> str:
         params_xml = "".join(f"<{name}>{html.escape(value)}</{name}>" for name, value in params.items())
@@ -334,6 +438,13 @@ class CbrSecInfoAdapter(BaseAdapter):
     @staticmethod
     def _format_soap_datetime(value: datetime) -> str:
         return CbrSecInfoAdapter._ensure_utc(value).strftime("%Y-%m-%dT%H:%M:%S")
+
+    @staticmethod
+    def _calendar_midnight(value: datetime, date_mode: str) -> datetime:
+        value = CbrSecInfoAdapter._ensure_utc(value)
+        if date_mode in {"timestamp", "instant", "preserve"}:
+            return value
+        return datetime.combine(value.date(), datetime.min.time(), tzinfo=timezone.utc)
 
     @staticmethod
     def _parse_decimal(value: Any) -> Decimal | None:

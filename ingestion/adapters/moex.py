@@ -44,6 +44,12 @@ class MoexAdapter(BaseAdapter):
             "market": "index",
             "board": "SNDX",
         },
+        "RTSI": {
+            "secid": "RTSI",
+            "engine": "stock",
+            "market": "index",
+            "board": "SNDX",
+        },
     }
 
     async def fetch(self, context: FetchContext) -> FetchResult:
@@ -477,7 +483,9 @@ class MoexAdapter(BaseAdapter):
     ) -> datetime:
         spec = context.source.scrape
         latest = context.latest_observed_at_by_series.get(instrument["series_code"])
-        if latest is not None:
+        max_latest_age_days = int(instrument.get("max_latest_age_days") or 30)
+        now_utc = datetime.now(timezone.utc)
+        if latest is not None and latest >= now_utc - timedelta(days=max_latest_age_days):
             return latest + timedelta(minutes=interval_minutes)
 
         explicit = self._resolve_end_datetime(instrument.get("from") or instrument.get("start_date"))
@@ -485,7 +493,7 @@ class MoexAdapter(BaseAdapter):
             return explicit
 
         lookback_days = int(instrument.get("initial_lookback_days") or 5)
-        start_from = datetime.now(timezone.utc) - timedelta(days=lookback_days)
+        start_from = now_utc - timedelta(days=lookback_days)
         if spec is not None and spec.start_date is not None and bool(instrument.get("backfill_from_start", False)):
             configured = spec.start_date if spec.start_date.tzinfo else spec.start_date.replace(tzinfo=timezone.utc)
             start_from = configured
