@@ -18,6 +18,7 @@ class CbrAdapter(BaseAdapter):
     daily_url = "https://www.cbr.ru/scripts/XML_daily.asp"
     dynamic_url = "https://www.cbr.ru/scripts/XML_dynamic.asp"
     key_rate_url = "https://www.cbr.ru/hd_base/KeyRate/"
+    ruonia_dynamics_url = "https://www.cbr.ru/hd_base/ruonia/dynamics/"
     currency_ids = {
         "USD": "R01235",
         "EUR": "R01239",
@@ -30,6 +31,8 @@ class CbrAdapter(BaseAdapter):
             raise AdapterError(f"source {context.source.source_code} has no CBR scrape spec")
 
         mode = str((spec.extra or {}).get("mode") or "latest_daily").lower()
+        if mode in {"ruonia", "ruonia_dynamics", "ruonia_history"}:
+            return await self._fetch_ruonia_dynamics(context)
         if mode in {"key_rate", "key_rate_history", "history_key_rate"}:
             return await self._fetch_key_rate_history(context)
         if mode in {"history", "history_daily", "dynamic"}:
@@ -37,6 +40,65 @@ class CbrAdapter(BaseAdapter):
         if mode in {"latest", "latest_daily", "current", "daily"}:
             return await self._fetch_latest_daily(context)
         raise AdapterError(f"unsupported CBR mode: {mode}")
+
+    async def _fetch_ruonia_dynamics(self, context: FetchContext) -> FetchResult:
+        spec = context.source.scrape
+        if spec is None:
+            raise AdapterError(f"source {context.source.source_code} has no CBR scrape spec")
+
+        extra = spec.extra or {}
+        metrics = self._ruonia_metrics(context)
+        date_from = self._ruonia_start_date(context, [metric["series_code"] for metric in metrics])
+        date_to = self._end_date(extra)
+        if date_from.date() > date_to.date():
+            return FetchResult(
+                observations=[],
+                raw_payload={
+                    "mode": "ruonia_dynamics",
+                    "date_from": date_from.date().isoformat(),
+                    "date_to": date_to.date().isoformat(),
+                    "row_count": 0,
+                    "observation_count": 0,
+                },
+            )
+
+        headers = {"User-Agent": context.settings.request_user_agent}
+        headers.update(spec.headers)
+        params = {
+            "UniDbQuery.From": self._format_cbr_query_date(date_from),
+            "UniDbQuery.To": self._format_cbr_query_date(date_to),
+            "UniDbQuery.Posted": "True",
+        }
+
+        async with httpx.AsyncClient(
+            timeout=context.settings.request_timeout_seconds,
+            follow_redirects=True,
+        ) as client:
+            response = await client.get(
+                str(spec.url or extra.get("ruonia_dynamics_url") or self.ruonia_dynamics_url),
+                headers=headers,
+                params=params,
+            )
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                raise AdapterError(
+                    f"CBR RUONIA HTTP {exc.response.status_code}: {exc.response.text[:300]}"
+                ) from exc
+
+        rows = self._parse_ruonia_rows(response.text)
+        observations = self._ruonia_rows_to_observations(context, rows, metrics)
+        return FetchResult(
+            observations=observations,
+            raw_payload={
+                "mode": "ruonia_dynamics",
+                "url": str(response.url),
+                "date_from": date_from.date().isoformat(),
+                "date_to": date_to.date().isoformat(),
+                "row_count": len(rows),
+                "observation_count": len(observations),
+            },
+        )
 
     async def _fetch_key_rate_history(self, context: FetchContext) -> FetchResult:
         spec = context.source.scrape
@@ -276,6 +338,48 @@ class CbrAdapter(BaseAdapter):
             )
         return observations
 
+    def _ruonia_rows_to_observations(
+        self,
+        context: FetchContext,
+        rows: list[dict[str, Any]],
+        metrics: list[dict[str, Any]],
+    ) -> list[RawObservationIn]:
+        observations: list[RawObservationIn] = []
+        for row in sorted(rows, key=lambda item: item["date"]):
+            observed_at = row["date"]
+            for metric in metrics:
+                series_code = str(metric["series_code"])
+                latest = context.latest_observed_at_by_series.get(series_code)
+                if latest is not None and observed_at <= latest:
+                    continue
+
+                raw_value = self._ruonia_row_value(row, metric["value_column"])
+                value_numeric = self._parse_decimal(raw_value)
+                if value_numeric is None:
+                    continue
+
+                observations.append(
+                    RawObservationIn(
+                        series_code=series_code,
+                        source_code=context.source.source_code,
+                        observed_at=observed_at,
+                        period_start=observed_at,
+                        publication_at=row.get("publication_at"),
+                        value_numeric=value_numeric,
+                        kind=ObservationKind.MACRO,
+                        raw_payload={
+                            "source": "cbr_ruonia_dynamics_html",
+                            "status": row.get("status"),
+                            "value_column": metric["value_column"],
+                            "cells": row.get("cells"),
+                            "headers": row.get("headers"),
+                        },
+                    )
+                )
+
+        observations.sort(key=lambda item: (item.observed_at, item.series_code))
+        return observations
+
     def _parse_dynamic_rows(self, content: bytes, currency_id: str) -> list[dict[str, Any]]:
         root = self._parse_xml(content)
         rows: list[dict[str, Any]] = []
@@ -354,6 +458,41 @@ class CbrAdapter(BaseAdapter):
             raise AdapterError("CBR key rate page has no parseable rows")
         return rows
 
+    def _parse_ruonia_rows(self, html: str) -> list[dict[str, Any]]:
+        soup = BeautifulSoup(html, "html.parser")
+        table = soup.select_one("table.data") or soup.select_one("table")
+        if table is None:
+            raise AdapterError("CBR RUONIA page has no data table")
+
+        headers: list[str] = []
+        rows: list[dict[str, Any]] = []
+        for table_row in table.select("tr"):
+            cells = [cell.get_text(" ", strip=True) for cell in table_row.select("td,th")]
+            if not cells:
+                continue
+            if table_row.select("th"):
+                headers = cells
+                continue
+            if len(cells) < 9:
+                continue
+
+            observed_at = self._parse_cbr_date(cells[0])
+            if observed_at is None:
+                continue
+            rows.append(
+                {
+                    "date": observed_at,
+                    "publication_at": self._parse_cbr_date(cells[10]) if len(cells) > 10 else None,
+                    "status": cells[9] if len(cells) > 9 else None,
+                    "cells": cells,
+                    "headers": headers,
+                }
+            )
+
+        if not rows:
+            raise AdapterError("CBR RUONIA page has no parseable rows")
+        return rows
+
     @staticmethod
     def _parse_xml(content: bytes) -> ET.Element:
         try:
@@ -381,6 +520,51 @@ class CbrAdapter(BaseAdapter):
             or (spec.extra or {}).get("series_code")
             or (context.source.series[0].series_code if context.source.series else context.source.source_code)
         )
+
+    def _ruonia_metrics(self, context: FetchContext) -> list[dict[str, Any]]:
+        spec = context.source.scrape
+        if spec is None:
+            return []
+
+        extra = spec.extra or {}
+        raw_metrics = extra.get("series")
+        if isinstance(raw_metrics, list) and raw_metrics:
+            metrics = [dict(item) for item in raw_metrics if isinstance(item, dict)]
+        else:
+            value_columns = extra.get("value_columns")
+            if isinstance(value_columns, dict):
+                metrics = [
+                    {"value_column": column, "series_code": series_code}
+                    for column, series_code in value_columns.items()
+                ]
+            else:
+                metrics = [
+                    {
+                        "value_column": extra.get("value_column") or spec.value_column,
+                        "series_code": self._series_code(context),
+                    }
+                ]
+
+        for metric in metrics:
+            if not metric.get("series_code"):
+                raise AdapterError(f"CBR RUONIA metric requires series_code: {metric}")
+            if metric.get("value_column") is None:
+                raise AdapterError(f"CBR RUONIA metric requires value_column: {metric}")
+        return metrics
+
+    def _ruonia_start_date(self, context: FetchContext, series_codes: list[str]) -> datetime:
+        spec = context.source.scrape
+        extra = spec.extra if spec is not None else {}
+        latest_values = [
+            context.latest_observed_at_by_series[series_code]
+            for series_code in series_codes
+            if context.latest_observed_at_by_series.get(series_code) is not None
+        ]
+        if len(latest_values) == len(series_codes) and latest_values:
+            return self._ensure_utc(min(latest_values)) + timedelta(days=1)
+        if spec is not None and spec.start_date is not None:
+            return self._ensure_utc(spec.start_date)
+        return datetime.now(timezone.utc) - timedelta(days=int(extra.get("lookback_days") or 30))
 
     def _start_date(self, context: FetchContext, series_code: str) -> datetime:
         spec = context.source.scrape
@@ -422,6 +606,23 @@ class CbrAdapter(BaseAdapter):
             return datetime.strptime(value, "%d.%m.%Y").replace(tzinfo=timezone.utc)
         except ValueError:
             return None
+
+    @staticmethod
+    def _ruonia_row_value(row: dict[str, Any], column: Any) -> str | None:
+        cells = row.get("cells")
+        headers = row.get("headers")
+        if not isinstance(cells, list):
+            return None
+        if isinstance(column, int) or str(column).isdigit():
+            index = int(column)
+            return str(cells[index]) if 0 <= index < len(cells) else None
+        if isinstance(headers, list):
+            try:
+                index = headers.index(str(column))
+            except ValueError:
+                return None
+            return str(cells[index]) if 0 <= index < len(cells) else None
+        return None
 
     @staticmethod
     def _format_cbr_date(value: datetime) -> str:
