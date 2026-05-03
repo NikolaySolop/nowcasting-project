@@ -436,6 +436,111 @@
       ]
     },
     {
+      "source_code": "PROFINANCE_URALS",
+      "source_name": "ProFinance Urals 15m",
+      "source_type": "web",
+      "adapter_name": "profinance",
+      "enabled": false,
+      "schedule_cron": "*/15 * * * *",
+      "scrape": {
+        "url": "https://www.profinance.ru/urals/",
+        "parser": "text",
+        "series_code": "PROFINANCE:URALS",
+        "extra": {
+          "ticker": "Urals Med",
+          "interval_minutes": 15,
+          "discover_page": true,
+          "page_urls": [
+            "https://profinance.broker-obzor.com/chart/urals/"
+          ],
+          "require_full_backfill": false,
+          "current_chart_assets": "charts/20240527",
+          "current_page_script": "urals/ws_2026030301.js"
+        },
+        "start_date": "01.01.2015"
+      },
+      "series": [
+        {
+          "series_code": "PROFINANCE:URALS",
+          "series_name": "Urals crude oil, USD/bbl"
+        }
+      ],
+      "metadata": {
+        "note": "Set scrape.extra.websocket_url/websocket_messages or history_url after confirming the current ProFinance chart endpoint."
+      }
+    },
+    {
+      "source_code": "EXCHANGERATES_URALS_USD_DAILY",
+      "source_name": "ExchangeRates.org.uk URALS/USD daily close",
+      "source_type": "web",
+      "adapter_name": "exchangerates",
+      "enabled": false,
+      "schedule_cron": "30 1 * * *",
+      "scrape": {
+        "url": "https://www.exchangerates.org.uk/commodities/URALS-USD-history.html",
+        "method": "POST",
+        "parser": "json",
+        "series_code": "EXCHANGERATES:URALSUSD:DAILY",
+        "extra": {
+          "mode": "history_daily",
+          "pair": "URALS/USD",
+          "ajax": "hist",
+          "streaming_persistence": true,
+          "history_post": true,
+          "history_form_encoding": "multipart",
+          "browser_headers": true,
+          "max_range_years": 5,
+          "per": 90,
+          "history_delay_min_seconds": 4.5,
+          "history_delay_max_seconds": 11,
+          "history_page_retries": 6,
+          "history_retry_delay_seconds": 15,
+          "from_param": "from",
+          "to_param": "to",
+          "page_param": "page",
+          "per_param": "per",
+          "referer": "https://www.exchangerates.org.uk/commodities/URALS-USD-history.html"
+        },
+        "start_date": "01.01.2015"
+      },
+      "series": [
+        {
+          "series_code": "EXCHANGERATES:URALSUSD:DAILY",
+          "series_name": "Urals crude oil, USD/bbl, daily close"
+        }
+      ],
+      "metadata": {
+        "note": "Uses the POST multipart history XHR JSON endpoint and splits requests into max 5-year date windows. Requires EXCHANGERATES_AJAX_NONCE and usually EXCHANGERATES_COOKIE from a browser session."
+      }
+    },
+    {
+      "source_code": "EXCHANGERATES_URALS_USD_LIVE_HTML",
+      "source_name": "ExchangeRates.org.uk URALS/USD live HTML",
+      "source_type": "web",
+      "adapter_name": "exchangerates",
+      "enabled": true,
+      "schedule_cron": "*/15 * * * *",
+      "scrape": {
+        "url": "https://www.exchangerates.org.uk/commodities/live-urals-crude-oil-prices/URALS-USD.html",
+        "parser": "text",
+        "series_code": "EXCHANGERATES:URALSUSD:LIVE15M",
+        "extra": {
+          "mode": "live_html",
+          "interval_minutes": 15,
+          "referer": "https://www.exchangerates.org.uk/commodities/live-urals-crude-oil-prices/URALS-USD.html"
+        }
+      },
+      "series": [
+        {
+          "series_code": "EXCHANGERATES:URALSUSD:LIVE15M",
+          "series_name": "Urals crude oil, USD/bbl, live 15m snapshot"
+        }
+      ],
+      "metadata": {
+        "note": "Cron-friendly fallback: parses current page price and buckets it into 15-minute timestamps. This is a snapshot stream, not exchange-grade 15m OHLC history."
+      }
+    },
+    {
       "source_code": "TRADINGVIEW_USDRUB",
       "source_name": "TradingView USD/RUB 15m",
       "source_type": "web",

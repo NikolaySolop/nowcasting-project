@@ -17,8 +17,17 @@ class Settings(BaseSettings):
         default=None,
         validation_alias=AliasChoices("API_EIA_KEY", "EIA_API_KEY", "INGESTION_EIA_API_KEY"),
     )
+    exchangerates_cookie: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("EXCHANGERATES_COOKIE", "INGESTION_EXCHANGERATES_COOKIE"),
+    )
+    exchangerates_ajax_nonce: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("EXCHANGERATES_AJAX_NONCE", "INGESTION_EXCHANGERATES_AJAX_NONCE"),
+    )
 
     source_config_path: Path | None = None
+    csv_export_dir: Path = Path("storage/exports")
     scheduler_enabled: bool = False
 
     model_config = SettingsConfigDict(
