@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from ingestion.api.routes import health, jobs, sources
+from ingestion.api.routes import exports, health, jobs, sources
 from ingestion.api.routes.deps import registry
 from ingestion.core.config import settings
 from ingestion.core.logging import configure_logging
@@ -32,6 +32,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router, prefix="/health", tags=["health"])
     app.include_router(sources.router, prefix="/sources", tags=["sources"])
     app.include_router(jobs.router, prefix="/jobs", tags=["jobs"])
+    app.include_router(exports.router, prefix="/exports", tags=["exports"])
     return app
 
 

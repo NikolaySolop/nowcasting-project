@@ -220,3 +220,7 @@ __marimo__/
 .DS_Store
 **/.DS_Store
 *.iml
+
+# Generated CSV exports
+storage/exports/*
+!storage/exports/.gitkeep

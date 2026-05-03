@@ -38,6 +38,9 @@ services:
     ports:
       - "8000:8000"
 
+    volumes:
+      - ./storage/exports:/app/storage/exports
+
     depends_on:
       postgres_db:
         condition: service_healthy

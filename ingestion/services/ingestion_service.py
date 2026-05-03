@@ -73,10 +73,75 @@ class IngestionService:
         adapter = self.registry.build_adapter(source)
         latest_observed = await self._latest_observed_at_by_series(source)
         fetch_result = await self._fetch_with_retries(source, adapter, latest_observed)
-        for observation in fetch_result.observations:
-            observation.vintage_at = fetch_result.loaded_at
+        loaded_count, duplicate_count = await self._store_observations(
+            source,
+            fetch_result.observations,
+            loaded_at=fetch_result.loaded_at,
+            commit=False,
+        )
+        loaded_count += fetch_result.persisted_loaded_count
+        duplicate_count += fetch_result.persisted_duplicate_count
 
-        valid_observations, duplicate_count = self.validation.deduplicate_batch(fetch_result.observations)
+        logger.info(
+            "source loaded",
+            extra={
+                "source_code": source.source_code,
+                "loaded_count": loaded_count,
+                "duplicate_count": duplicate_count,
+                "loaded_at": fetch_result.loaded_at.isoformat(),
+            },
+        )
+        return loaded_count, duplicate_count
+
+    async def _fetch_with_retries(
+        self,
+        source: SourceDefinition,
+        adapter: BaseAdapter,
+        latest_observed_at_by_series: dict[str, datetime],
+    ) -> FetchResult:
+        context = FetchContext(
+            source=source,
+            settings=self.settings,
+            latest_observed_at_by_series=latest_observed_at_by_series,
+            observation_sink=lambda observations, loaded_at: self._store_observations(
+                source,
+                observations,
+                loaded_at=loaded_at,
+                commit=True,
+            ),
+        )
+        last_error: Exception | None = None
+        retry_attempts = self.settings.retry_attempts
+        if source.scrape is not None and bool((source.scrape.extra or {}).get("streaming_persistence", False)):
+            retry_attempts = 1
+        for attempt in range(1, retry_attempts + 1):
+            try:
+                return await adapter.fetch(context)
+            except Exception as exc:
+                last_error = exc
+                logger.warning(
+                    "source fetch attempt failed",
+                    extra={"source_code": source.source_code, "attempt": attempt, "error": str(exc)},
+                )
+                if attempt < retry_attempts:
+                    await asyncio.sleep(self.settings.retry_backoff_seconds * attempt)
+        raise AdapterError(f"source {source.source_code} failed after retries: {last_error}")
+
+    async def _store_observations(
+        self,
+        source: SourceDefinition,
+        observations: list[RawObservationIn],
+        *,
+        loaded_at: datetime,
+        commit: bool,
+    ) -> tuple[int, int]:
+        if not observations:
+            return 0, 0
+
+        for observation in observations:
+            observation.vintage_at = loaded_at
+
+        valid_observations, duplicate_count = self.validation.deduplicate_batch(observations)
         storage_source = await self._ensure_source(source)
 
         loaded_count = 0
@@ -101,41 +166,14 @@ class IngestionService:
             )
             loaded_count += 1
 
-        logger.info(
-            "source loaded",
-            extra={
-                "source_code": source.source_code,
-                "loaded_count": loaded_count,
-                "duplicate_count": duplicate_count,
-                "loaded_at": fetch_result.loaded_at.isoformat(),
-            },
-        )
-        return loaded_count, duplicate_count
-
-    async def _fetch_with_retries(
-        self,
-        source: SourceDefinition,
-        adapter: BaseAdapter,
-        latest_observed_at_by_series: dict[str, datetime],
-    ) -> FetchResult:
-        context = FetchContext(
-            source=source,
-            settings=self.settings,
-            latest_observed_at_by_series=latest_observed_at_by_series,
-        )
-        last_error: Exception | None = None
-        for attempt in range(1, self.settings.retry_attempts + 1):
+        if commit:
             try:
-                return await adapter.fetch(context)
-            except Exception as exc:
-                last_error = exc
-                logger.warning(
-                    "source fetch attempt failed",
-                    extra={"source_code": source.source_code, "attempt": attempt, "error": str(exc)},
-                )
-                if attempt < self.settings.retry_attempts:
-                    await asyncio.sleep(self.settings.retry_backoff_seconds * attempt)
-        raise AdapterError(f"source {source.source_code} failed after retries: {last_error}")
+                await self.session.commit()
+            except IntegrityError:
+                await self.session.rollback()
+                raise
+
+        return loaded_count, duplicate_count
 
     async def _ensure_source(self, source: SourceDefinition):
         existing = await self.sources.get_by_source_code(source.source_code)
