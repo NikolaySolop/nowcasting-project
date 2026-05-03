@@ -6,6 +6,7 @@ from typing import Any
 from xml.etree import ElementTree as ET
 
 import httpx
+from bs4 import BeautifulSoup
 
 from ingestion.adapters.base import AdapterError, BaseAdapter, FetchContext, FetchResult
 from ingestion.schemas.observations import ObservationKind, RawObservationIn
@@ -16,6 +17,7 @@ class CbrAdapter(BaseAdapter):
 
     daily_url = "https://www.cbr.ru/scripts/XML_daily.asp"
     dynamic_url = "https://www.cbr.ru/scripts/XML_dynamic.asp"
+    key_rate_url = "https://www.cbr.ru/hd_base/KeyRate/"
     currency_ids = {
         "USD": "R01235",
         "EUR": "R01239",
@@ -28,11 +30,72 @@ class CbrAdapter(BaseAdapter):
             raise AdapterError(f"source {context.source.source_code} has no CBR scrape spec")
 
         mode = str((spec.extra or {}).get("mode") or "latest_daily").lower()
+        if mode in {"key_rate", "key_rate_history", "history_key_rate"}:
+            return await self._fetch_key_rate_history(context)
         if mode in {"history", "history_daily", "dynamic"}:
             return await self._fetch_history_daily(context)
         if mode in {"latest", "latest_daily", "current", "daily"}:
             return await self._fetch_latest_daily(context)
         raise AdapterError(f"unsupported CBR mode: {mode}")
+
+    async def _fetch_key_rate_history(self, context: FetchContext) -> FetchResult:
+        spec = context.source.scrape
+        if spec is None:
+            raise AdapterError(f"source {context.source.source_code} has no CBR scrape spec")
+
+        extra = spec.extra or {}
+        series_code = self._series_code(context)
+        date_from = self._start_date(context, series_code)
+        date_to = self._end_date(extra)
+        if date_from.date() > date_to.date():
+            return FetchResult(
+                observations=[],
+                raw_payload={
+                    "mode": "key_rate_history",
+                    "date_from": date_from.date().isoformat(),
+                    "date_to": date_to.date().isoformat(),
+                    "row_count": 0,
+                    "observation_count": 0,
+                },
+            )
+
+        headers = {"User-Agent": context.settings.request_user_agent}
+        headers.update(spec.headers)
+        params = {
+            "UniDbQuery.From": self._format_cbr_query_date(date_from),
+            "UniDbQuery.To": self._format_cbr_query_date(date_to),
+            "UniDbQuery.Posted": "True",
+        }
+
+        async with httpx.AsyncClient(
+            timeout=context.settings.request_timeout_seconds,
+            follow_redirects=True,
+        ) as client:
+            response = await client.get(
+                str(spec.url or extra.get("key_rate_url") or self.key_rate_url),
+                headers=headers,
+                params=params,
+            )
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                raise AdapterError(
+                    f"CBR key rate HTTP {exc.response.status_code}: {exc.response.text[:300]}"
+                ) from exc
+
+        rows = self._parse_key_rate_rows(response.text)
+        observations = self._key_rate_rows_to_observations(context, rows, series_code)
+        return FetchResult(
+            observations=observations,
+            raw_payload={
+                "mode": "key_rate_history",
+                "url": str(response.url),
+                "date_from": date_from.date().isoformat(),
+                "date_to": date_to.date().isoformat(),
+                "row_count": len(rows),
+                "observation_count": len(observations),
+            },
+        )
 
     async def _fetch_history_daily(self, context: FetchContext) -> FetchResult:
         spec = context.source.scrape
@@ -183,6 +246,36 @@ class CbrAdapter(BaseAdapter):
             )
         return observations
 
+    def _key_rate_rows_to_observations(
+        self,
+        context: FetchContext,
+        rows: list[dict[str, Any]],
+        series_code: str,
+    ) -> list[RawObservationIn]:
+        latest = context.latest_observed_at_by_series.get(series_code)
+        observations: list[RawObservationIn] = []
+        for row in sorted(rows, key=lambda item: item["date"]):
+            observed_at = row["date"]
+            if latest is not None and observed_at <= latest:
+                continue
+
+            observations.append(
+                RawObservationIn(
+                    series_code=series_code,
+                    source_code=context.source.source_code,
+                    observed_at=observed_at,
+                    period_start=observed_at,
+                    value_numeric=row["rate"],
+                    kind=ObservationKind.MACRO,
+                    raw_payload={
+                        "source": "cbr_key_rate_html",
+                        "unit": "percent_per_annum",
+                        "value": str(row["rate"]),
+                    },
+                )
+            )
+        return observations
+
     def _parse_dynamic_rows(self, content: bytes, currency_id: str) -> list[dict[str, Any]]:
         root = self._parse_xml(content)
         rows: list[dict[str, Any]] = []
@@ -238,6 +331,28 @@ class CbrAdapter(BaseAdapter):
             "vunit_rate": vunit_rate,
             "rate": rate,
         }
+
+    def _parse_key_rate_rows(self, html: str) -> list[dict[str, Any]]:
+        soup = BeautifulSoup(html, "html.parser")
+        table = soup.select_one("table.data") or soup.select_one("table")
+        if table is None:
+            raise AdapterError("CBR key rate page has no data table")
+
+        rows: list[dict[str, Any]] = []
+        for table_row in table.select("tr"):
+            cells = [cell.get_text(" ", strip=True) for cell in table_row.select("td,th")]
+            if len(cells) < 2 or cells[0].lower() == "дата":
+                continue
+
+            observed_at = self._parse_cbr_date(cells[0])
+            rate = self._parse_decimal(cells[1])
+            if observed_at is None or rate is None:
+                continue
+            rows.append({"date": observed_at, "rate": rate})
+
+        if not rows:
+            raise AdapterError("CBR key rate page has no parseable rows")
+        return rows
 
     @staticmethod
     def _parse_xml(content: bytes) -> ET.Element:
@@ -311,6 +426,10 @@ class CbrAdapter(BaseAdapter):
     @staticmethod
     def _format_cbr_date(value: datetime) -> str:
         return CbrAdapter._ensure_utc(value).strftime("%d/%m/%Y")
+
+    @staticmethod
+    def _format_cbr_query_date(value: datetime) -> str:
+        return CbrAdapter._ensure_utc(value).strftime("%d.%m.%Y")
 
     @staticmethod
     def _ensure_utc(value: datetime) -> datetime:

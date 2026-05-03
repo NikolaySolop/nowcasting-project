@@ -597,6 +597,33 @@
       }
     },
     {
+      "source_code": "CBR_KEY_RATE",
+      "source_name": "CBR key rate",
+      "source_type": "api",
+      "adapter_name": "cbr",
+      "enabled": true,
+      "schedule_cron": "15 12 * * 1-5",
+      "scrape": {
+        "url": "https://www.cbr.ru/hd_base/KeyRate/",
+        "parser": "text",
+        "series_code": "CBR:KEY_RATE",
+        "start_date": "01.01.2015",
+        "extra": {
+          "mode": "key_rate_history",
+          "end_date_offset_days": 1
+        }
+      },
+      "series": [
+        {
+          "series_code": "CBR:KEY_RATE",
+          "series_name": "Bank of Russia key rate, percent per annum"
+        }
+      ],
+      "metadata": {
+        "note": "Backfills and updates the Bank of Russia key rate from the official KeyRate page. Values are stored as annual percent points."
+      }
+    },
+    {
       "source_code": "MOEX_RUBCNY_DAILY",
       "source_name": "MOEX CNY/RUB TOM daily history",
       "source_type": "exchange",
