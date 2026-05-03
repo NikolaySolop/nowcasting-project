@@ -17,6 +17,10 @@ class Settings(BaseSettings):
         default=None,
         validation_alias=AliasChoices("API_EIA_KEY", "EIA_API_KEY", "INGESTION_EIA_API_KEY"),
     )
+    fred_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("API_FRED_KEY", "FRED_API_KEY", "INGESTION_FRED_API_KEY"),
+    )
     exchangerates_cookie: str | None = Field(
         default=None,
         validation_alias=AliasChoices("EXCHANGERATES_COOKIE", "INGESTION_EXCHANGERATES_COOKIE"),
