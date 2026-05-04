@@ -26,6 +26,52 @@
       ]
     },
     {
+      "source_code": "FRED_SOFR",
+      "source_name": "FRED Secured Overnight Financing Rate",
+      "source_type": "api",
+      "adapter_name": "fred",
+      "enabled": true,
+      "schedule_cron": "0 14 * * 1-5",
+      "scrape": {
+        "url": "https://api.stlouisfed.org/fred/series/observations",
+        "parser": "text",
+        "series_code": "FRED:SOFR",
+        "start_date": "2018-04-03",
+        "extra": {
+          "fred_series_id": "SOFR"
+        }
+      },
+      "series": [
+        {
+          "series_code": "FRED:SOFR",
+          "series_name": "Secured Overnight Financing Rate, percent"
+        }
+      ]
+    },
+    {
+      "source_code": "FRED_EFFR",
+      "source_name": "FRED Effective Federal Funds Rate",
+      "source_type": "api",
+      "adapter_name": "fred",
+      "enabled": true,
+      "schedule_cron": "0 14 * * 1-5",
+      "scrape": {
+        "url": "https://api.stlouisfed.org/fred/series/observations",
+        "parser": "text",
+        "series_code": "FRED:EFFR",
+        "start_date": "2000-07-03",
+        "extra": {
+          "fred_series_id": "EFFR"
+        }
+      },
+      "series": [
+        {
+          "series_code": "FRED:EFFR",
+          "series_name": "Effective Federal Funds Rate, percent"
+        }
+      ]
+    },
+    {
       "source_code": "EIA_ECONOMICS_USCOSC",
       "source_name": "EIA U.S. Crude Oil Stocks Change",
       "source_type": "api",
@@ -594,6 +640,177 @@
       ],
       "metadata": {
         "note": "Initial run backfills official CBR daily history from XML_dynamic.asp. The 15-minute schedule checks whether CBR has published a new official daily rate; it is not an intraday market quote."
+      }
+    },
+    {
+      "source_code": "CBR_KEY_RATE",
+      "source_name": "CBR key rate",
+      "source_type": "api",
+      "adapter_name": "cbr",
+      "enabled": true,
+      "schedule_cron": "15 12 * * 1-5",
+      "scrape": {
+        "url": "https://www.cbr.ru/hd_base/KeyRate/",
+        "parser": "text",
+        "series_code": "CBR:KEY_RATE",
+        "start_date": "01.01.2015",
+        "extra": {
+          "mode": "key_rate_history",
+          "end_date_offset_days": 1
+        }
+      },
+      "series": [
+        {
+          "series_code": "CBR:KEY_RATE",
+          "series_name": "Bank of Russia key rate, percent per annum"
+        }
+      ],
+      "metadata": {
+        "note": "Backfills and updates the Bank of Russia key rate from the official KeyRate page. Values are stored as annual percent points."
+      }
+    },
+    {
+      "source_code": "CBR_KEY_RATE_MEETINGS",
+      "source_name": "CBR key rate meeting dummy",
+      "source_type": "api",
+      "adapter_name": "cbr",
+      "enabled": true,
+      "schedule_cron": "0 8 * * 1",
+      "scrape": {
+        "url": "https://www.cbr.ru/dkp/cal_mp/",
+        "parser": "text",
+        "series_code": "CBR:KEY_RATE_MEETING_DUMMY",
+        "start_date": "01.01.2015",
+        "extra": {
+          "mode": "key_rate_meetings",
+          "end_date_offset_days": 365
+        }
+      },
+      "series": [
+        {
+          "series_code": "CBR:KEY_RATE_MEETING_DUMMY",
+          "series_name": "Bank of Russia key rate meeting dummy"
+        }
+      ],
+      "metadata": {
+        "note": "Backfills and updates a 0/1 event dummy for Bank of Russia key rate meetings from the official calendar of key rate decisions. Observations use the expected press-release publication time from the CBR page, converted from Moscow time to UTC; downstream feature tables should fill non-meeting dates with 0."
+      }
+    },
+    {
+      "source_code": "CBR_KEY_RATE_DECISION_PUBLICATIONS",
+      "source_name": "CBR key rate decision publication dummy",
+      "source_type": "api",
+      "adapter_name": "cbr",
+      "enabled": true,
+      "schedule_cron": "0 8 * * 1",
+      "scrape": {
+        "url": "https://www.cbr.ru/dkp/cal_mp/",
+        "parser": "text",
+        "series_code": "CBR:KEY_RATE_DECISION_PUBLICATION_DUMMY",
+        "start_date": "01.01.2015",
+        "extra": {
+          "mode": "key_rate_decision_publications",
+          "event_type": "key_rate_decision_publication",
+          "end_date_offset_days": 365
+        }
+      },
+      "series": [
+        {
+          "series_code": "CBR:KEY_RATE_DECISION_PUBLICATION_DUMMY",
+          "series_name": "Bank of Russia key rate decision publication dummy"
+        }
+      ],
+      "metadata": {
+        "note": "Backfills and updates a 0/1 event dummy for publication of Bank of Russia key rate decisions. Observed_at and publication_at use the expected press-release publication time from the official CBR calendar, converted from Moscow time to UTC; downstream feature tables should fill non-publication timestamps with 0."
+      }
+    },
+    {
+      "source_code": "CBR_RUONIA_DYNAMICS",
+      "source_name": "CBR RUONIA dynamics and calculation parameters",
+      "source_type": "api",
+      "adapter_name": "cbr",
+      "enabled": true,
+      "schedule_cron": "30 12 * * 1-5",
+      "scrape": {
+        "url": "https://www.cbr.ru/hd_base/ruonia/dynamics/",
+        "parser": "text",
+        "date_column": 0,
+        "start_date": "01.01.2015",
+        "extra": {
+          "mode": "ruonia_dynamics",
+          "end_date_offset_days": 1,
+          "series": [
+            {
+              "series_code": "RUONIA_RATE",
+              "value_column": 1
+            },
+            {
+              "series_code": "RUONIA_VOLUME",
+              "value_column": 2
+            },
+            {
+              "series_code": "RUONIA_TRADES_COUNT",
+              "value_column": 3
+            },
+            {
+              "series_code": "RUONIA_PARTICIPANTS_COUNT",
+              "value_column": 4
+            },
+            {
+              "series_code": "RUONIA_MIN_RATE",
+              "value_column": 5
+            },
+            {
+              "series_code": "RUONIA_P25_RATE",
+              "value_column": 6
+            },
+            {
+              "series_code": "RUONIA_P75_RATE",
+              "value_column": 7
+            },
+            {
+              "series_code": "RUONIA_MAX_RATE",
+              "value_column": 8
+            }
+          ]
+        }
+      },
+      "series": [
+        {
+          "series_code": "RUONIA_RATE",
+          "series_name": "RUONIA rate, percent per annum"
+        },
+        {
+          "series_code": "RUONIA_VOLUME",
+          "series_name": "RUONIA transactions volume, billion RUB"
+        },
+        {
+          "series_code": "RUONIA_TRADES_COUNT",
+          "series_name": "RUONIA transactions count"
+        },
+        {
+          "series_code": "RUONIA_PARTICIPANTS_COUNT",
+          "series_name": "RUONIA participants count"
+        },
+        {
+          "series_code": "RUONIA_MIN_RATE",
+          "series_name": "RUONIA minimum rate, percent per annum"
+        },
+        {
+          "series_code": "RUONIA_P25_RATE",
+          "series_name": "RUONIA 25th percentile rate, percent per annum"
+        },
+        {
+          "series_code": "RUONIA_P75_RATE",
+          "series_name": "RUONIA 75th percentile rate, percent per annum"
+        },
+        {
+          "series_code": "RUONIA_MAX_RATE",
+          "series_name": "RUONIA maximum rate, percent per annum"
+        }
+      ],
+      "metadata": {
+        "note": "Backfills and updates RUONIA dynamics from the official Bank of Russia RUONIA dynamics page. Volume is stored in billion rubles; rates are annual percent points."
       }
     },
     {
