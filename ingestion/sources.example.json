@@ -670,6 +670,61 @@
       }
     },
     {
+      "source_code": "CBR_KEY_RATE_MEETINGS",
+      "source_name": "CBR key rate meeting dummy",
+      "source_type": "api",
+      "adapter_name": "cbr",
+      "enabled": true,
+      "schedule_cron": "0 8 * * 1",
+      "scrape": {
+        "url": "https://www.cbr.ru/dkp/cal_mp/",
+        "parser": "text",
+        "series_code": "CBR:KEY_RATE_MEETING_DUMMY",
+        "start_date": "01.01.2015",
+        "extra": {
+          "mode": "key_rate_meetings",
+          "end_date_offset_days": 365
+        }
+      },
+      "series": [
+        {
+          "series_code": "CBR:KEY_RATE_MEETING_DUMMY",
+          "series_name": "Bank of Russia key rate meeting dummy"
+        }
+      ],
+      "metadata": {
+        "note": "Backfills and updates a 0/1 event dummy for Bank of Russia key rate meetings from the official calendar of key rate decisions. Observations use the expected press-release publication time from the CBR page, converted from Moscow time to UTC; downstream feature tables should fill non-meeting dates with 0."
+      }
+    },
+    {
+      "source_code": "CBR_KEY_RATE_DECISION_PUBLICATIONS",
+      "source_name": "CBR key rate decision publication dummy",
+      "source_type": "api",
+      "adapter_name": "cbr",
+      "enabled": true,
+      "schedule_cron": "0 8 * * 1",
+      "scrape": {
+        "url": "https://www.cbr.ru/dkp/cal_mp/",
+        "parser": "text",
+        "series_code": "CBR:KEY_RATE_DECISION_PUBLICATION_DUMMY",
+        "start_date": "01.01.2015",
+        "extra": {
+          "mode": "key_rate_decision_publications",
+          "event_type": "key_rate_decision_publication",
+          "end_date_offset_days": 365
+        }
+      },
+      "series": [
+        {
+          "series_code": "CBR:KEY_RATE_DECISION_PUBLICATION_DUMMY",
+          "series_name": "Bank of Russia key rate decision publication dummy"
+        }
+      ],
+      "metadata": {
+        "note": "Backfills and updates a 0/1 event dummy for publication of Bank of Russia key rate decisions. Observed_at and publication_at use the expected press-release publication time from the official CBR calendar, converted from Moscow time to UTC; downstream feature tables should fill non-publication timestamps with 0."
+      }
+    },
+    {
       "source_code": "CBR_RUONIA_DYNAMICS",
       "source_name": "CBR RUONIA dynamics and calculation parameters",
       "source_type": "api",

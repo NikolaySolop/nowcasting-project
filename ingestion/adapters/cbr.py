@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -18,6 +19,7 @@ class CbrAdapter(BaseAdapter):
     daily_url = "https://www.cbr.ru/scripts/XML_daily.asp"
     dynamic_url = "https://www.cbr.ru/scripts/XML_dynamic.asp"
     key_rate_url = "https://www.cbr.ru/hd_base/KeyRate/"
+    key_rate_calendar_url = "https://www.cbr.ru/dkp/cal_mp/"
     ruonia_dynamics_url = "https://www.cbr.ru/hd_base/ruonia/dynamics/"
     currency_ids = {
         "USD": "R01235",
@@ -33,6 +35,14 @@ class CbrAdapter(BaseAdapter):
         mode = str((spec.extra or {}).get("mode") or "latest_daily").lower()
         if mode in {"ruonia", "ruonia_dynamics", "ruonia_history"}:
             return await self._fetch_ruonia_dynamics(context)
+        if mode in {
+            "key_rate_meetings",
+            "key_rate_meeting_dummy",
+            "meetings_calendar",
+            "key_rate_decision_publications",
+            "key_rate_decision_publication_dummy",
+        }:
+            return await self._fetch_key_rate_meetings(context)
         if mode in {"key_rate", "key_rate_history", "history_key_rate"}:
             return await self._fetch_key_rate_history(context)
         if mode in {"history", "history_daily", "dynamic"}:
@@ -40,6 +50,60 @@ class CbrAdapter(BaseAdapter):
         if mode in {"latest", "latest_daily", "current", "daily"}:
             return await self._fetch_latest_daily(context)
         raise AdapterError(f"unsupported CBR mode: {mode}")
+
+    async def _fetch_key_rate_meetings(self, context: FetchContext) -> FetchResult:
+        spec = context.source.scrape
+        if spec is None:
+            raise AdapterError(f"source {context.source.source_code} has no CBR scrape spec")
+
+        extra = spec.extra or {}
+        mode = str(extra.get("mode") or "key_rate_meetings")
+        series_code = self._series_code(context)
+        date_from = self._start_date(context, series_code)
+        date_to = self._end_date(extra)
+        if date_from.date() > date_to.date():
+            return FetchResult(
+                observations=[],
+                raw_payload={
+                    "mode": mode,
+                    "date_from": date_from.date().isoformat(),
+                    "date_to": date_to.date().isoformat(),
+                    "row_count": 0,
+                    "observation_count": 0,
+                },
+            )
+
+        headers = {"User-Agent": context.settings.request_user_agent}
+        headers.update(spec.headers)
+        async with httpx.AsyncClient(
+            timeout=context.settings.request_timeout_seconds,
+            follow_redirects=True,
+        ) as client:
+            response = await client.get(
+                str(spec.url or extra.get("key_rate_calendar_url") or self.key_rate_calendar_url),
+                headers=headers,
+            )
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                raise AdapterError(
+                    f"CBR key rate calendar HTTP {exc.response.status_code}: {exc.response.text[:300]}"
+                ) from exc
+
+        rows = self._parse_key_rate_meeting_rows(response.text)
+        rows = [row for row in rows if date_from.date() <= row["date"].date() <= date_to.date()]
+        observations = self._key_rate_meeting_rows_to_observations(context, rows, series_code)
+        return FetchResult(
+            observations=observations,
+            raw_payload={
+                "mode": mode,
+                "url": str(response.url),
+                "date_from": date_from.date().isoformat(),
+                "date_to": date_to.date().isoformat(),
+                "row_count": len(rows),
+                "observation_count": len(observations),
+            },
+        )
 
     async def _fetch_ruonia_dynamics(self, context: FetchContext) -> FetchResult:
         spec = context.source.scrape
@@ -338,6 +402,43 @@ class CbrAdapter(BaseAdapter):
             )
         return observations
 
+    def _key_rate_meeting_rows_to_observations(
+        self,
+        context: FetchContext,
+        rows: list[dict[str, Any]],
+        series_code: str,
+    ) -> list[RawObservationIn]:
+        spec = context.source.scrape
+        extra = spec.extra if spec is not None else {}
+        event_type = str(extra.get("event_type") or "key_rate_meeting")
+        latest = context.latest_observed_at_by_series.get(series_code)
+        observations: list[RawObservationIn] = []
+        for row in sorted(rows, key=lambda item: item["date"]):
+            observed_at = row["date"]
+            if latest is not None and observed_at <= latest:
+                continue
+
+            observations.append(
+                RawObservationIn(
+                    series_code=series_code,
+                    source_code=context.source.source_code,
+                    observed_at=observed_at,
+                    period_start=observed_at,
+                    publication_at=observed_at,
+                    value_numeric=Decimal("1"),
+                    kind=ObservationKind.EVENT,
+                    raw_payload={
+                        "source": "cbr_key_rate_calendar_html",
+                        "event_type": event_type,
+                        "event_title": row["title"],
+                        "date_text": row["date_text"],
+                        "meeting_date": row["meeting_date"],
+                        "release_time_msk": row.get("release_time_msk"),
+                    },
+                )
+            )
+        return observations
+
     def _ruonia_rows_to_observations(
         self,
         context: FetchContext,
@@ -456,6 +557,64 @@ class CbrAdapter(BaseAdapter):
 
         if not rows:
             raise AdapterError("CBR key rate page has no parseable rows")
+        return rows
+
+    def _parse_key_rate_meeting_rows(self, html: str) -> list[dict[str, Any]]:
+        soup = BeautifulSoup(html, "html.parser")
+        tab_years = self._calendar_tab_years(soup)
+        default_release_time = self._parse_cbr_release_time(soup.get_text(" ", strip=True))
+
+        rows: list[dict[str, Any]] = []
+        seen_dates: set[datetime] = set()
+
+        def add_row(date_text: str, title: str, tab_id: str | None) -> None:
+            date_text = self._normalize_text(date_text)
+            fallback_year = tab_years.get(tab_id) if tab_id else None
+            meeting_date = self._parse_cbr_calendar_date(date_text, fallback_year)
+            if meeting_date is None:
+                return
+
+            title = self._normalize_text(title)
+            if not self._is_key_rate_meeting_title(title):
+                return
+            if meeting_date in seen_dates:
+                return
+
+            release_time = self._parse_cbr_release_time(title) or default_release_time
+            observed_at = self._apply_moscow_time(meeting_date, release_time) if release_time else meeting_date
+            seen_dates.add(meeting_date)
+            rows.append(
+                {
+                    "date": observed_at,
+                    "date_text": date_text,
+                    "meeting_date": meeting_date.date().isoformat(),
+                    "release_time_msk": self._format_release_time(release_time),
+                    "title": title,
+                }
+            )
+
+        for day in soup.select(".calendar-main-events .main-events_day"):
+            date_tag = day.select_one(".date")
+            if date_tag is None:
+                continue
+            add_row(
+                date_tag.get_text(" ", strip=True),
+                day.get_text(" ", strip=True),
+                self._calendar_tab_id(day),
+            )
+
+        for tab in soup.select("[data-tabs-content]"):
+            tab_id = str(tab.get("data-tabs-content") or "")
+            for table_row in tab.select("table tr"):
+                cells = [cell.get_text(" ", strip=True) for cell in table_row.select("td,th")]
+                if len(cells) < 2:
+                    continue
+                if self._normalize_text(cells[0]).lower() == "дата":
+                    continue
+                add_row(cells[0], cells[1], tab_id)
+
+        if not rows:
+            raise AdapterError("CBR key rate calendar has no parseable meeting rows")
         return rows
 
     def _parse_ruonia_rows(self, html: str) -> list[dict[str, Any]]:
@@ -599,6 +758,84 @@ class CbrAdapter(BaseAdapter):
             return None
 
     @staticmethod
+    def _calendar_tab_years(soup: BeautifulSoup) -> dict[str, int]:
+        tab_years: dict[str, int] = {}
+        for tab in soup.select("[data-tabs-tab]"):
+            tab_id = str(tab.get("data-tabs-tab") or "")
+            match = re.search(r"\b(20\d{2})\b", tab.get_text(" ", strip=True))
+            if tab_id and match:
+                tab_years[tab_id] = int(match.group(1))
+        return tab_years
+
+    @staticmethod
+    def _calendar_tab_id(day: Any) -> str | None:
+        parent = day.parent
+        while parent is not None:
+            tab_id = parent.get("data-tabs-content") if hasattr(parent, "get") else None
+            if tab_id:
+                return str(tab_id)
+            parent = parent.parent
+        return None
+
+    @staticmethod
+    def _parse_cbr_calendar_date(value: str, fallback_year: int | None = None) -> datetime | None:
+        month_numbers = {
+            "января": 1,
+            "февраля": 2,
+            "марта": 3,
+            "апреля": 4,
+            "мая": 5,
+            "июня": 6,
+            "июля": 7,
+            "августа": 8,
+            "сентября": 9,
+            "октября": 10,
+            "ноября": 11,
+            "декабря": 12,
+        }
+        normalized = CbrAdapter._normalize_text(value).lower()
+        match = re.search(r"^(\d{1,2})\s+([а-яё]+)(?:\s+(\d{4}))?", normalized)
+        if match is None:
+            return None
+
+        day = int(match.group(1))
+        month = month_numbers.get(match.group(2))
+        year = int(match.group(3)) if match.group(3) else fallback_year
+        if month is None or year is None:
+            return None
+
+        try:
+            return datetime(year, month, day, tzinfo=timezone.utc)
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _parse_cbr_release_time(value: str) -> tuple[int, int] | None:
+        normalized = CbrAdapter._normalize_text(value).lower()
+        match = re.search(r"публикаци[ия][^0-9]{0,120}(\d{1,2})[:.](\d{2})", normalized)
+        if match is None:
+            return None
+
+        hour = int(match.group(1))
+        minute = int(match.group(2))
+        if not (0 <= hour <= 23 and 0 <= minute <= 59):
+            return None
+        return hour, minute
+
+    @staticmethod
+    def _apply_moscow_time(value: datetime, release_time: tuple[int, int]) -> datetime:
+        moscow_tz = timezone(timedelta(hours=3))
+        hour, minute = release_time
+        return value.replace(hour=hour, minute=minute, tzinfo=moscow_tz).astimezone(timezone.utc)
+
+    @staticmethod
+    def _format_release_time(value: tuple[int, int] | None) -> str | None:
+        if value is None:
+            return None
+        hour, minute = value
+        return f"{hour:02d}:{minute:02d}"
+
+    @staticmethod
     def _parse_cbr_date(value: str | None) -> datetime | None:
         if not value:
             return None
@@ -606,6 +843,21 @@ class CbrAdapter(BaseAdapter):
             return datetime.strptime(value, "%d.%m.%Y").replace(tzinfo=timezone.utc)
         except ValueError:
             return None
+
+    @staticmethod
+    def _is_key_rate_meeting_title(value: str) -> bool:
+        normalized = CbrAdapter._normalize_text(value).lower()
+        if "заседание совета директоров" not in normalized:
+            return False
+        return (
+            "ключевой ставке" in normalized
+            or "денежно-кредитной политике" in normalized
+            or "денежно-кредитной политики" in normalized
+        )
+
+    @staticmethod
+    def _normalize_text(value: str) -> str:
+        return " ".join(value.replace("\xa0", " ").split())
 
     @staticmethod
     def _ruonia_row_value(row: dict[str, Any], column: Any) -> str | None:
