@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import re
+import zipfile
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
+from email.utils import parsedate_to_datetime
+from io import BytesIO
 from typing import Any
 from xml.etree import ElementTree as ET
 
@@ -21,6 +24,10 @@ class CbrAdapter(BaseAdapter):
     key_rate_url = "https://www.cbr.ru/hd_base/KeyRate/"
     key_rate_calendar_url = "https://www.cbr.ru/dkp/cal_mp/"
     ruonia_dynamics_url = "https://www.cbr.ru/hd_base/ruonia/dynamics/"
+    inflation_url = "https://www.cbr.ru/statistics/ddkp/infl/"
+    dkfs_url = "https://www.cbr.ru/statistics/macro_itm/dkfs/"
+    credit_m2x_url = "https://www.cbr.ru/Content/Document/File/177307/credit_m2x.xlsx"
+    xlsx_namespace = {"a": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
     currency_ids = {
         "USD": "R01235",
         "EUR": "R01239",
@@ -49,7 +56,83 @@ class CbrAdapter(BaseAdapter):
             return await self._fetch_history_daily(context)
         if mode in {"latest", "latest_daily", "current", "daily"}:
             return await self._fetch_latest_daily(context)
+        if mode in {"inflation", "inflation_dynamics", "cpi_yoy", "cpi_yoy_dynamics"}:
+            return await self._fetch_inflation_dynamics(context)
+        if mode in {"credit_m2x", "money_credit", "monetary_aggregates_credit"}:
+            return await self._fetch_credit_m2x(context)
         raise AdapterError(f"unsupported CBR mode: {mode}")
+
+    async def _fetch_credit_m2x(self, context: FetchContext) -> FetchResult:
+        spec = context.source.scrape
+        if spec is None:
+            raise AdapterError(f"source {context.source.source_code} has no CBR scrape spec")
+
+        extra = spec.extra or {}
+        metrics = self._credit_m2x_metrics(context)
+        date_from = self._multi_series_start_date(context, [metric["series_code"] for metric in metrics])
+        date_to = self._end_date(extra)
+        if date_from.date() > date_to.date():
+            return FetchResult(
+                observations=[],
+                raw_payload={
+                    "mode": "credit_m2x",
+                    "date_from": date_from.date().isoformat(),
+                    "date_to": date_to.date().isoformat(),
+                    "row_count": 0,
+                    "observation_count": 0,
+                },
+            )
+
+        headers = {"User-Agent": context.settings.request_user_agent}
+        headers.update(spec.headers)
+
+        async with httpx.AsyncClient(
+            timeout=context.settings.request_timeout_seconds,
+            follow_redirects=True,
+        ) as client:
+            page_response = await client.get(str(spec.url or extra.get("page_url") or self.dkfs_url), headers=headers)
+            try:
+                page_response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                raise AdapterError(
+                    f"CBR DKFS page HTTP {exc.response.status_code}: {exc.response.text[:300]}"
+                ) from exc
+
+            xlsx_url = self._credit_m2x_xlsx_url(page_response.text, str(page_response.url), extra)
+            xlsx_response = await client.get(xlsx_url, headers=headers)
+            try:
+                xlsx_response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                raise AdapterError(
+                    f"CBR credit_m2x XLSX HTTP {exc.response.status_code}: {exc.response.text[:300]}"
+                ) from exc
+
+        publication_dates = self._parse_credit_m2x_publication_dates(page_response.text)
+        page_last_update = self._parse_page_last_update(page_response.text)
+        xlsx_last_modified = self._parse_http_datetime(xlsx_response.headers.get("last-modified"))
+        rows = self._parse_credit_m2x_rows(xlsx_response.content, metrics)
+        rows = [row for row in rows if date_from.date() <= row["date"].date() <= date_to.date()]
+        observations = self._credit_m2x_rows_to_observations(
+            context,
+            rows,
+            publication_dates,
+            page_last_update=page_last_update,
+            xlsx_last_modified=xlsx_last_modified,
+        )
+        return FetchResult(
+            observations=observations,
+            raw_payload={
+                "mode": "credit_m2x",
+                "page_url": str(page_response.url),
+                "xlsx_url": str(xlsx_response.url),
+                "date_from": date_from.date().isoformat(),
+                "date_to": date_to.date().isoformat(),
+                "row_count": len(rows),
+                "observation_count": len(observations),
+                "page_last_update": page_last_update.isoformat() if page_last_update else None,
+                "xlsx_last_modified": xlsx_last_modified.isoformat() if xlsx_last_modified else None,
+            },
+        )
 
     async def _fetch_key_rate_meetings(self, context: FetchContext) -> FetchResult:
         spec = context.source.scrape
@@ -215,6 +298,65 @@ class CbrAdapter(BaseAdapter):
             observations=observations,
             raw_payload={
                 "mode": "key_rate_history",
+                "url": str(response.url),
+                "date_from": date_from.date().isoformat(),
+                "date_to": date_to.date().isoformat(),
+                "row_count": len(rows),
+                "observation_count": len(observations),
+            },
+        )
+
+    async def _fetch_inflation_dynamics(self, context: FetchContext) -> FetchResult:
+        spec = context.source.scrape
+        if spec is None:
+            raise AdapterError(f"source {context.source.source_code} has no CBR scrape spec")
+
+        extra = spec.extra or {}
+        series_code = self._series_code(context)
+        date_from = self._start_date(context, series_code)
+        date_to = self._end_date(extra)
+        if date_from.date() > date_to.date():
+            return FetchResult(
+                observations=[],
+                raw_payload={
+                    "mode": "inflation_dynamics",
+                    "date_from": date_from.date().isoformat(),
+                    "date_to": date_to.date().isoformat(),
+                    "row_count": 0,
+                    "observation_count": 0,
+                },
+            )
+
+        headers = {"User-Agent": context.settings.request_user_agent}
+        headers.update(spec.headers)
+        params = {
+            "UniDbQuery.From": self._format_cbr_query_date(date_from),
+            "UniDbQuery.To": self._format_cbr_query_date(date_to),
+            "UniDbQuery.Posted": "True",
+        }
+
+        async with httpx.AsyncClient(
+            timeout=context.settings.request_timeout_seconds,
+            follow_redirects=True,
+        ) as client:
+            response = await client.get(
+                str(spec.url or extra.get("inflation_url") or self.inflation_url),
+                headers=headers,
+                params=params,
+            )
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                raise AdapterError(
+                    f"CBR inflation HTTP {exc.response.status_code}: {exc.response.text[:300]}"
+                ) from exc
+
+        rows = self._parse_inflation_rows(response.text)
+        observations = self._inflation_rows_to_observations(context, rows, series_code)
+        return FetchResult(
+            observations=observations,
+            raw_payload={
+                "mode": "inflation_dynamics",
                 "url": str(response.url),
                 "date_from": date_from.date().isoformat(),
                 "date_to": date_to.date().isoformat(),
@@ -481,6 +623,57 @@ class CbrAdapter(BaseAdapter):
         observations.sort(key=lambda item: (item.observed_at, item.series_code))
         return observations
 
+    def _credit_m2x_rows_to_observations(
+        self,
+        context: FetchContext,
+        rows: list[dict[str, Any]],
+        publication_dates: dict[datetime, datetime],
+        *,
+        page_last_update: datetime | None,
+        xlsx_last_modified: datetime | None,
+    ) -> list[RawObservationIn]:
+        spec = context.source.scrape
+        extra = spec.extra if spec is not None else {}
+        observations: list[RawObservationIn] = []
+        for row in sorted(rows, key=lambda item: (item["date"], item["series_code"])):
+            series_code = str(row["series_code"])
+            observed_at = row["date"]
+            latest = context.latest_observed_at_by_series.get(series_code)
+            if latest is not None and observed_at <= latest:
+                continue
+
+            publication_at, publication_source = self._credit_m2x_publication_at(
+                observed_at,
+                publication_dates,
+                page_last_update=page_last_update,
+                fallback=str(extra.get("publication_at_fallback") or "estimated_same_month_day"),
+                fallback_day=int(extra.get("publication_at_fallback_day") or 22),
+            )
+            vintage_at = xlsx_last_modified or page_last_update or datetime.now(timezone.utc)
+            observations.append(
+                RawObservationIn(
+                    series_code=series_code,
+                    source_code=context.source.source_code,
+                    observed_at=observed_at,
+                    period_start=observed_at,
+                    publication_at=publication_at,
+                    vintage_at=vintage_at,
+                    value_numeric=row["value"],
+                    kind=ObservationKind.MACRO,
+                    raw_payload={
+                        "source": "cbr_credit_m2x_xlsx",
+                        "row_label": row["row_label"],
+                        "unit": "billion_rub",
+                        "value": str(row["value"]),
+                        "publication_at_source": publication_source,
+                        "page_last_update": page_last_update.isoformat() if page_last_update else None,
+                        "xlsx_last_modified": xlsx_last_modified.isoformat() if xlsx_last_modified else None,
+                    },
+                )
+            )
+
+        return observations
+
     def _parse_dynamic_rows(self, content: bytes, currency_id: str) -> list[dict[str, Any]]:
         root = self._parse_xml(content)
         rows: list[dict[str, Any]] = []
@@ -652,6 +845,312 @@ class CbrAdapter(BaseAdapter):
             raise AdapterError("CBR RUONIA page has no parseable rows")
         return rows
 
+    def _parse_inflation_rows(self, html: str) -> list[dict[str, Any]]:
+        soup = BeautifulSoup(html, "html.parser")
+        table = soup.select_one("table.data") or soup.select_one("table")
+        if table is None:
+            raise AdapterError("CBR inflation page has no data table")
+
+        rows: list[dict[str, Any]] = []
+        for table_row in table.select("tr"):
+            cells = [cell.get_text(" ", strip=True) for cell in table_row.select("td,th")]
+            if len(cells) < 3 or table_row.select("th"):
+                continue
+            observed_at = self._parse_cbr_month_date(cells[0])
+            if observed_at is None:
+                continue
+            inflation = self._parse_decimal(cells[2])
+            if inflation is None:
+                continue
+            rows.append({"date": observed_at, "inflation_yoy": inflation, "cells": cells})
+
+        if not rows:
+            raise AdapterError("CBR inflation page has no parseable rows")
+        return rows
+
+    def _inflation_rows_to_observations(
+        self,
+        context: FetchContext,
+        rows: list[dict[str, Any]],
+        series_code: str,
+    ) -> list[RawObservationIn]:
+        spec = context.source.scrape
+        extra = spec.extra if spec is not None else {}
+        pub_nth_bday = extra.get("publication_at_nth_bday_next_month")
+        latest = context.latest_observed_at_by_series.get(series_code)
+        observations: list[RawObservationIn] = []
+        for row in sorted(rows, key=lambda r: r["date"]):
+            observed_at = row["date"]
+            if latest is not None and observed_at <= latest:
+                continue
+            publication_at = (
+                self._nth_business_day_of_next_month(observed_at, int(pub_nth_bday))
+                if pub_nth_bday is not None
+                else None
+            )
+            observations.append(
+                RawObservationIn(
+                    series_code=series_code,
+                    source_code=context.source.source_code,
+                    observed_at=observed_at,
+                    publication_at=publication_at,
+                    value_numeric=row["inflation_yoy"],
+                    kind=ObservationKind.MACRO,
+                    raw_payload={
+                        "source": "cbr_inflation_html",
+                        "value": str(row["inflation_yoy"]),
+                        "cells": row.get("cells"),
+                    },
+                )
+            )
+        return observations
+
+    def _parse_credit_m2x_rows(self, content: bytes, metrics: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        rows = self._xlsx_sheet_rows(content, "млрд рублей")
+        if not rows:
+            raise AdapterError("CBR credit_m2x workbook has no 'млрд рублей' rows")
+
+        date_row = rows[0]
+        dates_by_column = {
+            column: self._parse_excel_date(value)
+            for column, value in date_row.items()
+            if column > 1
+        }
+        dates_by_column = {column: value for column, value in dates_by_column.items() if value is not None}
+        if not dates_by_column:
+            raise AdapterError("CBR credit_m2x workbook has no date columns")
+
+        row_by_label = {
+            self._normalize_text(str(row.get(1) or "")).lower(): row
+            for row in rows[1:]
+            if row.get(1) is not None
+        }
+
+        parsed_rows: list[dict[str, Any]] = []
+        for metric in metrics:
+            row_label = str(metric["row_label"])
+            row = row_by_label.get(self._normalize_text(row_label).lower())
+            if row is None:
+                raise AdapterError(f"CBR credit_m2x workbook has no row label: {row_label}")
+            for column, observed_at in dates_by_column.items():
+                value = self._parse_decimal(row.get(column))
+                if value is None:
+                    continue
+                parsed_rows.append(
+                    {
+                        "series_code": metric["series_code"],
+                        "row_label": row_label,
+                        "date": observed_at,
+                        "value": value,
+                    }
+                )
+
+        return parsed_rows
+
+    def _xlsx_sheet_rows(self, content: bytes, sheet_name: str) -> list[dict[int, str]]:
+        ns = self.xlsx_namespace
+        with zipfile.ZipFile(BytesIO(content)) as workbook:
+            workbook_root = ET.fromstring(workbook.read("xl/workbook.xml"))
+            rels_root = ET.fromstring(workbook.read("xl/_rels/workbook.xml.rels"))
+            rels = {rel.attrib["Id"]: rel.attrib["Target"] for rel in rels_root}
+            sheet_path = None
+            for sheet in workbook_root.findall("a:sheets/a:sheet", ns):
+                name = str(sheet.attrib.get("name") or "")
+                if self._normalize_text(name).lower() != self._normalize_text(sheet_name).lower():
+                    continue
+                rel_id = sheet.attrib.get("{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id")
+                if rel_id is not None and rel_id in rels:
+                    target = rels[rel_id]
+                    sheet_path = target if target.startswith("xl/") else f"xl/{target}"
+                    break
+            if sheet_path is None:
+                raise AdapterError(f"CBR XLSX workbook has no sheet: {sheet_name}")
+
+            shared_strings = self._xlsx_shared_strings(workbook)
+            sheet_root = ET.fromstring(workbook.read(sheet_path))
+
+        rows: list[dict[int, str]] = []
+        for row in sheet_root.findall(".//a:sheetData/a:row", ns):
+            values: dict[int, str] = {}
+            for cell in row.findall("a:c", ns):
+                cell_ref = str(cell.attrib.get("r") or "")
+                column = self._xlsx_column_index(cell_ref)
+                if column is None:
+                    continue
+                value = self._xlsx_cell_value(cell, shared_strings)
+                if value is not None:
+                    values[column] = value
+            if values:
+                rows.append(values)
+        return rows
+
+    def _xlsx_shared_strings(self, workbook: zipfile.ZipFile) -> list[str]:
+        ns = self.xlsx_namespace
+        if "xl/sharedStrings.xml" not in workbook.namelist():
+            return []
+        root = ET.fromstring(workbook.read("xl/sharedStrings.xml"))
+        return [
+            "".join(text.text or "" for text in item.findall(".//a:t", ns))
+            for item in root.findall("a:si", ns)
+        ]
+
+    def _xlsx_cell_value(self, cell: ET.Element, shared_strings: list[str]) -> str | None:
+        ns = self.xlsx_namespace
+        value_node = cell.find("a:v", ns)
+        if value_node is None or value_node.text is None:
+            inline = cell.find("a:is", ns)
+            if inline is None:
+                return None
+            return "".join(text.text or "" for text in inline.findall(".//a:t", ns))
+        value = value_node.text
+        if cell.attrib.get("t") == "s":
+            try:
+                return shared_strings[int(value)]
+            except (ValueError, IndexError):
+                return None
+        return value
+
+    @staticmethod
+    def _xlsx_column_index(cell_ref: str) -> int | None:
+        match = re.match(r"^([A-Z]+)", cell_ref.upper())
+        if match is None:
+            return None
+        column = 0
+        for char in match.group(1):
+            column = column * 26 + ord(char) - ord("A") + 1
+        return column
+
+    @staticmethod
+    def _parse_excel_date(value: Any) -> datetime | None:
+        parsed = CbrAdapter._parse_datetime(value)
+        if parsed is not None:
+            return parsed.replace(hour=0, minute=0, second=0, microsecond=0)
+        try:
+            serial = Decimal(str(value))
+        except (InvalidOperation, ValueError):
+            return None
+        return (datetime(1899, 12, 30, tzinfo=timezone.utc) + timedelta(days=float(serial))).replace(
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+
+    def _credit_m2x_metrics(self, context: FetchContext) -> list[dict[str, str]]:
+        spec = context.source.scrape
+        extra = spec.extra if spec is not None else {}
+        raw_metrics = extra.get("series")
+        if isinstance(raw_metrics, list) and raw_metrics:
+            metrics = [dict(item) for item in raw_metrics if isinstance(item, dict)]
+        else:
+            metrics = [
+                {"series_code": "RU_M2", "row_label": "Денежная масса М2"},
+                {"series_code": "RU_CREDIT_HOUSEHOLDS", "row_label": "кредиты физическим лицам"},
+                {"series_code": "RU_CREDIT_CORPORATES", "row_label": "корпоративные кредиты"},
+            ]
+
+        normalized: list[dict[str, str]] = []
+        for metric in metrics:
+            series_code = str(metric.get("series_code") or "").strip()
+            row_label = str(metric.get("row_label") or "").strip()
+            if not series_code:
+                raise AdapterError(f"CBR credit_m2x metric requires series_code: {metric}")
+            if not row_label:
+                raise AdapterError(f"CBR credit_m2x metric requires row_label: {metric}")
+            normalized.append({"series_code": series_code, "row_label": row_label})
+        return normalized
+
+    def _credit_m2x_xlsx_url(self, html: str, page_url: str, extra: dict[str, Any]) -> str:
+        explicit = str(extra.get("xlsx_url") or "").strip()
+        if explicit:
+            return explicit
+        soup = BeautifulSoup(html, "html.parser")
+        for link in soup.select("a[href]"):
+            href = str(link.get("href") or "")
+            text = self._normalize_text(link.get_text(" ", strip=True)).lower()
+            if "credit_m2x.xlsx" in href.lower() or "приложение к материалу" in text:
+                return str(httpx.URL(page_url).join(href))
+        return self.credit_m2x_url
+
+    def _parse_credit_m2x_publication_dates(self, html: str) -> dict[datetime, datetime]:
+        soup = BeautifulSoup(html, "html.parser")
+        publication_dates: dict[datetime, datetime] = {}
+        for link in soup.select("a.versions_item"):
+            observed_at = self._parse_cbr_date(link.get_text(" ", strip=True))
+            tooltip = str(link.get("data-tooltip-content") or "")
+            publication_at = self._parse_russian_publication_date(tooltip)
+            if observed_at is not None and publication_at is not None:
+                publication_dates[observed_at] = publication_at
+        return publication_dates
+
+    @staticmethod
+    def _parse_page_last_update(html: str) -> datetime | None:
+        text = BeautifulSoup(html, "html.parser").get_text(" ", strip=True)
+        match = re.search(r"(?:Дата последнего обновления|Последнее обновление страницы):\s*(\d{2}\.\d{2}\.\d{4})", text)
+        return CbrAdapter._parse_cbr_date(match.group(1)) if match else None
+
+    @staticmethod
+    def _parse_http_datetime(value: str | None) -> datetime | None:
+        if not value:
+            return None
+        try:
+            parsed = parsedate_to_datetime(value)
+        except (TypeError, ValueError, IndexError, OverflowError):
+            return None
+        return CbrAdapter._ensure_utc(parsed)
+
+    @staticmethod
+    def _parse_russian_publication_date(value: str) -> datetime | None:
+        month_numbers = {
+            "января": 1,
+            "февраля": 2,
+            "марта": 3,
+            "апреля": 4,
+            "мая": 5,
+            "июня": 6,
+            "июля": 7,
+            "августа": 8,
+            "сентября": 9,
+            "октября": 10,
+            "ноября": 11,
+            "декабря": 12,
+        }
+        normalized = CbrAdapter._normalize_text(value).lower()
+        match = re.search(r"(\d{1,2})\s+([а-яё]+)\s+(\d{4})", normalized)
+        if match is None:
+            return None
+        month = month_numbers.get(match.group(2))
+        if month is None:
+            return None
+        try:
+            return datetime(int(match.group(3)), month, int(match.group(1)), tzinfo=timezone.utc)
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _credit_m2x_publication_at(
+        observed_at: datetime,
+        publication_dates: dict[datetime, datetime],
+        *,
+        page_last_update: datetime | None,
+        fallback: str,
+        fallback_day: int,
+    ) -> tuple[datetime | None, str | None]:
+        observed_key = observed_at.replace(hour=0, minute=0, second=0, microsecond=0)
+        if observed_key in publication_dates:
+            return publication_dates[observed_key], "cbr_versions_tooltip"
+        if fallback == "page_last_update":
+            return page_last_update, "page_last_update" if page_last_update else None
+        if fallback == "none":
+            return None, None
+        if fallback == "estimated_same_month_day":
+            day = max(1, min(28, fallback_day))
+            estimated = observed_at.replace(day=day, hour=0, minute=0, second=0, microsecond=0)
+            while estimated.weekday() >= 5:
+                estimated += timedelta(days=1)
+            return estimated, "estimated_same_month_day"
+        return None, None
+
     @staticmethod
     def _parse_xml(content: bytes) -> ET.Element:
         try:
@@ -724,6 +1223,20 @@ class CbrAdapter(BaseAdapter):
         if spec is not None and spec.start_date is not None:
             return self._ensure_utc(spec.start_date)
         return datetime.now(timezone.utc) - timedelta(days=int(extra.get("lookback_days") or 30))
+
+    def _multi_series_start_date(self, context: FetchContext, series_codes: list[str]) -> datetime:
+        spec = context.source.scrape
+        extra = spec.extra if spec is not None else {}
+        latest_values = [
+            context.latest_observed_at_by_series[series_code]
+            for series_code in series_codes
+            if context.latest_observed_at_by_series.get(series_code) is not None
+        ]
+        if len(latest_values) == len(series_codes) and latest_values:
+            return self._ensure_utc(min(latest_values)) + timedelta(days=1)
+        if spec is not None and spec.start_date is not None:
+            return self._ensure_utc(spec.start_date)
+        return datetime.now(timezone.utc) - timedelta(days=int(extra.get("lookback_days") or 45))
 
     def _start_date(self, context: FetchContext, series_code: str) -> datetime:
         spec = context.source.scrape
@@ -843,6 +1356,36 @@ class CbrAdapter(BaseAdapter):
             return datetime.strptime(value, "%d.%m.%Y").replace(tzinfo=timezone.utc)
         except ValueError:
             return None
+
+    @staticmethod
+    def _parse_cbr_month_date(value: str | None) -> datetime | None:
+        """Parse CBR month date in MM.YYYY format to the first of that month (UTC)."""
+        if not value:
+            return None
+        try:
+            return datetime.strptime(value.strip(), "%m.%Y").replace(tzinfo=timezone.utc)
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _nth_business_day_of_next_month(observed_at: datetime, n: int) -> datetime:
+        """Return the nth Mon–Fri of the month following observed_at (UTC midnight)."""
+        if observed_at.month == 12:
+            year, month = observed_at.year + 1, 1
+        else:
+            year, month = observed_at.year, observed_at.month + 1
+        d = observed_at.replace(
+            year=year, month=month, day=1,
+            hour=0, minute=0, second=0, microsecond=0,
+            tzinfo=timezone.utc,
+        )
+        count = 0
+        while True:
+            if d.weekday() < 5:
+                count += 1
+                if count == n:
+                    return d
+            d += timedelta(days=1)
 
     @staticmethod
     def _is_key_rate_meeting_title(value: str) -> bool:

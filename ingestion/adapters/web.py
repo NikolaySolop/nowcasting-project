@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -102,25 +102,61 @@ class WebPageAdapter(BaseAdapter):
         if not isinstance(rows, list):
             raise AdapterError("json parser expects a list payload or a top-level data list")
 
+        series_code = spec.series_code or context.source.source_code
+        start_dt = spec.start_date.replace(tzinfo=timezone.utc) if spec.start_date else None
+        latest = context.latest_observed_at_by_series.get(series_code)
+        extra = spec.extra or {}
+        pub_nth_bday = extra.get("publication_at_nth_bday_next_month")
+        pub_col = spec.extra.get("publication_at_column") if spec.extra else None
+
         observations: list[RawObservationIn] = []
         for row in rows:
             if not isinstance(row, dict):
                 continue
             observed_at = self._parse_date(str(row[spec.date_column]), spec.date_format)
+            if start_dt and observed_at < start_dt:
+                continue
+            if latest and observed_at <= latest:
+                continue
             raw_value = row.get(spec.value_column)
             value_numeric = self._parse_decimal(str(raw_value))
             value_text = str(row.get(spec.text_column)) if spec.text_column else None
+            if pub_col and row.get(pub_col):
+                publication_at = self._parse_date(str(row[pub_col]), None)
+            elif pub_nth_bday is not None:
+                publication_at = self._nth_business_day_of_next_month(observed_at, int(pub_nth_bday))
+            else:
+                publication_at = None
             observations.append(
                 RawObservationIn(
-                    series_code=spec.series_code or context.source.source_code,
+                    series_code=series_code,
                     source_code=context.source.source_code,
                     observed_at=observed_at,
+                    publication_at=publication_at,
                     value_numeric=value_numeric,
                     value_text=value_text if value_numeric is None else None,
                     raw_payload=row,
                 )
             )
         return observations
+
+    @staticmethod
+    def _nth_business_day_of_next_month(observed_at: datetime, n: int) -> datetime:
+        """Return the nth Mon–Fri of the month following observed_at (UTC midnight)."""
+        if observed_at.month == 12:
+            year, month = observed_at.year + 1, 1
+        else:
+            year, month = observed_at.year, observed_at.month + 1
+        d = observed_at.replace(year=year, month=month, day=1,
+                                hour=0, minute=0, second=0, microsecond=0,
+                                tzinfo=timezone.utc)
+        count = 0
+        while True:
+            if d.weekday() < 5:
+                count += 1
+                if count == n:
+                    return d
+            d += timedelta(days=1)
 
     @staticmethod
     def _cell(cells: list[str], headers: list[str], column: str | int | None) -> str:
