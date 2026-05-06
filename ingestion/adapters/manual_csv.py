@@ -38,12 +38,15 @@ class ManualCsvAdapter(BaseAdapter):
             observed_at = self._parse_date(row[spec.date_column], spec.date_format)
             pub_raw = row.get(spec.release_date_column) if spec.release_date_column else None
             publication_at = self._parse_date(pub_raw, None) if pub_raw and pub_raw.strip() else None
+            vintage_raw = row.get(spec.vintage_date_column) if spec.vintage_date_column else None
+            vintage_at = self._parse_date(vintage_raw, None) if vintage_raw and vintage_raw.strip() else None
             observations.append(
                 RawObservationIn(
                     series_code=series_code,
                     source_code=context.source.source_code,
                     observed_at=observed_at,
                     publication_at=publication_at,
+                    vintage_at=vintage_at or datetime.now(timezone.utc),
                     value_numeric=value_numeric,
                     value_text=value_text if value_numeric is None else None,
                     raw_payload=dict(row),

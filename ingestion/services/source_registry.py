@@ -12,6 +12,7 @@ from ingestion.adapters.manual_csv import ManualCsvAdapter
 from ingestion.adapters.tradingview import TradingViewAdapter
 from ingestion.adapters.moex import MoexAdapter
 from ingestion.adapters.profinance import ProFinanceAdapter
+from ingestion.adapters.rosstat_industrial import RosstatIndustrialAdapter
 from ingestion.adapters.web import WebPageAdapter
 from ingestion.adapters.yahoo import YahooAdapter
 from ingestion.schemas.sources import SourceDefinition
@@ -33,6 +34,7 @@ class SourceRegistry:
         self.register_adapter(ExchangeRatesAdapter.name, ExchangeRatesAdapter)
         self.register_adapter(YahooAdapter.name, YahooAdapter)
         self.register_adapter(ManualCsvAdapter.name, ManualCsvAdapter)
+        self.register_adapter(RosstatIndustrialAdapter.name, RosstatIndustrialAdapter)
         self.register_adapter(TradingViewAdapter.name, TradingViewAdapter)
         self.register_adapter(ProFinanceAdapter.name, ProFinanceAdapter)
 

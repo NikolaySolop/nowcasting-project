@@ -138,8 +138,12 @@ class IngestionService:
         if not observations:
             return 0, 0
 
-        for observation in observations:
-            observation.vintage_at = loaded_at
+        preserve_vintage = bool(source.csv and source.csv.vintage_date_column)
+        if source.scrape and bool((source.scrape.extra or {}).get("preserve_vintage_at", False)):
+            preserve_vintage = True
+        if not preserve_vintage:
+            for observation in observations:
+                observation.vintage_at = loaded_at
 
         valid_observations, duplicate_count = self.validation.deduplicate_batch(observations)
         storage_source = await self._ensure_source(source)
