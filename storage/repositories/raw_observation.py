@@ -31,6 +31,24 @@ class RawObservationRepository(BaseRepository[RawObservation]):
         result = await self.session.scalars(stmt)
         return list(result.all())
 
+    async def latest_observed_at_by_series_global(self, series_codes: list[str]) -> dict[str, datetime]:
+        """Max observed_at per series across ALL sources — used by live sources that share series with backfill sources."""
+        if not series_codes:
+            return {}
+        series_stmt = select(Series.id, Series.series_code).where(Series.series_code.in_(series_codes))
+        series_rows = (await self.session.execute(series_stmt)).all()
+        if not series_rows:
+            return {}
+        code_to_id = {code: sid for sid, code in series_rows}
+        stmt = (
+            select(RawObservation.series_id, func.max(RawObservation.observed_at))
+            .where(RawObservation.series_id.in_(list(code_to_id.values())))
+            .group_by(RawObservation.series_id)
+        )
+        rows = (await self.session.execute(stmt)).all()
+        id_to_code = {sid: code for code, sid in code_to_id.items()}
+        return {id_to_code[sid]: obs_at for sid, obs_at in rows if sid in id_to_code}
+
     async def latest_observed_at_by_series(self, source_id: UUID) -> dict[str, datetime]:
         stmt = (
             select(RawObservation.series_id, func.max(RawObservation.observed_at))

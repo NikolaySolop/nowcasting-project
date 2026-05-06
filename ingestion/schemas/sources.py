@@ -59,6 +59,7 @@ class CsvSpec(BaseModel):
     series_code_column: str | None = None
     series_code: str | None = None
     date_format: str | None = None
+    release_date_column: str | None = None
 
 
 class SeriesDefinition(BaseModel):

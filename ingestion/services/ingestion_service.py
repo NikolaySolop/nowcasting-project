@@ -197,11 +197,16 @@ class IngestionService:
 
 
     async def _latest_observed_at_by_series(self, source: SourceDefinition) -> dict[str, datetime]:
-        storage_source = await self.sources.get_by_source_code(source.source_code)
-        if storage_source is None:
-            existing: dict[str, datetime] = {}
+        use_global = bool((source.scrape.extra if source.scrape else {}).get("global_series_latest"))
+        if use_global:
+            series_codes = [s.series_code for s in source.series]
+            existing: dict[str, datetime] = await self.observations.latest_observed_at_by_series_global(series_codes)
         else:
-            existing = await self.observations.latest_observed_at_by_series(storage_source.id)
+            storage_source = await self.sources.get_by_source_code(source.source_code)
+            if storage_source is None:
+                existing = {}
+            else:
+                existing = await self.observations.latest_observed_at_by_series(storage_source.id)
 
         start_date = source.scrape.start_date if source.scrape else None
         if start_date is None:

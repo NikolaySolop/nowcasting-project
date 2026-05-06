@@ -21,6 +21,7 @@ class CbrAdapter(BaseAdapter):
     key_rate_url = "https://www.cbr.ru/hd_base/KeyRate/"
     key_rate_calendar_url = "https://www.cbr.ru/dkp/cal_mp/"
     ruonia_dynamics_url = "https://www.cbr.ru/hd_base/ruonia/dynamics/"
+    inflation_url = "https://www.cbr.ru/statistics/ddkp/infl/"
     currency_ids = {
         "USD": "R01235",
         "EUR": "R01239",
@@ -49,6 +50,8 @@ class CbrAdapter(BaseAdapter):
             return await self._fetch_history_daily(context)
         if mode in {"latest", "latest_daily", "current", "daily"}:
             return await self._fetch_latest_daily(context)
+        if mode in {"inflation", "inflation_dynamics", "cpi_yoy", "cpi_yoy_dynamics"}:
+            return await self._fetch_inflation_dynamics(context)
         raise AdapterError(f"unsupported CBR mode: {mode}")
 
     async def _fetch_key_rate_meetings(self, context: FetchContext) -> FetchResult:
@@ -215,6 +218,65 @@ class CbrAdapter(BaseAdapter):
             observations=observations,
             raw_payload={
                 "mode": "key_rate_history",
+                "url": str(response.url),
+                "date_from": date_from.date().isoformat(),
+                "date_to": date_to.date().isoformat(),
+                "row_count": len(rows),
+                "observation_count": len(observations),
+            },
+        )
+
+    async def _fetch_inflation_dynamics(self, context: FetchContext) -> FetchResult:
+        spec = context.source.scrape
+        if spec is None:
+            raise AdapterError(f"source {context.source.source_code} has no CBR scrape spec")
+
+        extra = spec.extra or {}
+        series_code = self._series_code(context)
+        date_from = self._start_date(context, series_code)
+        date_to = self._end_date(extra)
+        if date_from.date() > date_to.date():
+            return FetchResult(
+                observations=[],
+                raw_payload={
+                    "mode": "inflation_dynamics",
+                    "date_from": date_from.date().isoformat(),
+                    "date_to": date_to.date().isoformat(),
+                    "row_count": 0,
+                    "observation_count": 0,
+                },
+            )
+
+        headers = {"User-Agent": context.settings.request_user_agent}
+        headers.update(spec.headers)
+        params = {
+            "UniDbQuery.From": self._format_cbr_query_date(date_from),
+            "UniDbQuery.To": self._format_cbr_query_date(date_to),
+            "UniDbQuery.Posted": "True",
+        }
+
+        async with httpx.AsyncClient(
+            timeout=context.settings.request_timeout_seconds,
+            follow_redirects=True,
+        ) as client:
+            response = await client.get(
+                str(spec.url or extra.get("inflation_url") or self.inflation_url),
+                headers=headers,
+                params=params,
+            )
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                raise AdapterError(
+                    f"CBR inflation HTTP {exc.response.status_code}: {exc.response.text[:300]}"
+                ) from exc
+
+        rows = self._parse_inflation_rows(response.text)
+        observations = self._inflation_rows_to_observations(context, rows, series_code)
+        return FetchResult(
+            observations=observations,
+            raw_payload={
+                "mode": "inflation_dynamics",
                 "url": str(response.url),
                 "date_from": date_from.date().isoformat(),
                 "date_to": date_to.date().isoformat(),
@@ -652,6 +714,66 @@ class CbrAdapter(BaseAdapter):
             raise AdapterError("CBR RUONIA page has no parseable rows")
         return rows
 
+    def _parse_inflation_rows(self, html: str) -> list[dict[str, Any]]:
+        soup = BeautifulSoup(html, "html.parser")
+        table = soup.select_one("table.data") or soup.select_one("table")
+        if table is None:
+            raise AdapterError("CBR inflation page has no data table")
+
+        rows: list[dict[str, Any]] = []
+        for table_row in table.select("tr"):
+            cells = [cell.get_text(" ", strip=True) for cell in table_row.select("td,th")]
+            if len(cells) < 3 or table_row.select("th"):
+                continue
+            observed_at = self._parse_cbr_month_date(cells[0])
+            if observed_at is None:
+                continue
+            inflation = self._parse_decimal(cells[2])
+            if inflation is None:
+                continue
+            rows.append({"date": observed_at, "inflation_yoy": inflation, "cells": cells})
+
+        if not rows:
+            raise AdapterError("CBR inflation page has no parseable rows")
+        return rows
+
+    def _inflation_rows_to_observations(
+        self,
+        context: FetchContext,
+        rows: list[dict[str, Any]],
+        series_code: str,
+    ) -> list[RawObservationIn]:
+        spec = context.source.scrape
+        extra = spec.extra if spec is not None else {}
+        pub_nth_bday = extra.get("publication_at_nth_bday_next_month")
+        latest = context.latest_observed_at_by_series.get(series_code)
+        observations: list[RawObservationIn] = []
+        for row in sorted(rows, key=lambda r: r["date"]):
+            observed_at = row["date"]
+            if latest is not None and observed_at <= latest:
+                continue
+            publication_at = (
+                self._nth_business_day_of_next_month(observed_at, int(pub_nth_bday))
+                if pub_nth_bday is not None
+                else None
+            )
+            observations.append(
+                RawObservationIn(
+                    series_code=series_code,
+                    source_code=context.source.source_code,
+                    observed_at=observed_at,
+                    publication_at=publication_at,
+                    value_numeric=row["inflation_yoy"],
+                    kind=ObservationKind.MACRO,
+                    raw_payload={
+                        "source": "cbr_inflation_html",
+                        "value": str(row["inflation_yoy"]),
+                        "cells": row.get("cells"),
+                    },
+                )
+            )
+        return observations
+
     @staticmethod
     def _parse_xml(content: bytes) -> ET.Element:
         try:
@@ -843,6 +965,36 @@ class CbrAdapter(BaseAdapter):
             return datetime.strptime(value, "%d.%m.%Y").replace(tzinfo=timezone.utc)
         except ValueError:
             return None
+
+    @staticmethod
+    def _parse_cbr_month_date(value: str | None) -> datetime | None:
+        """Parse CBR month date in MM.YYYY format to the first of that month (UTC)."""
+        if not value:
+            return None
+        try:
+            return datetime.strptime(value.strip(), "%m.%Y").replace(tzinfo=timezone.utc)
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _nth_business_day_of_next_month(observed_at: datetime, n: int) -> datetime:
+        """Return the nth Mon–Fri of the month following observed_at (UTC midnight)."""
+        if observed_at.month == 12:
+            year, month = observed_at.year + 1, 1
+        else:
+            year, month = observed_at.year, observed_at.month + 1
+        d = observed_at.replace(
+            year=year, month=month, day=1,
+            hour=0, minute=0, second=0, microsecond=0,
+            tzinfo=timezone.utc,
+        )
+        count = 0
+        while True:
+            if d.weekday() < 5:
+                count += 1
+                if count == n:
+                    return d
+            d += timedelta(days=1)
 
     @staticmethod
     def _is_key_rate_meeting_title(value: str) -> bool:
