@@ -5,6 +5,7 @@ from typing import Callable
 from ingestion.adapters.base import BaseAdapter
 from ingestion.adapters.cbr import CbrAdapter
 from ingestion.adapters.cbr_secinfo import CbrSecInfoAdapter
+from ingestion.adapters.cbr_trade_balance import CbrTradeBalanceAdapter
 from ingestion.adapters.eia import EiaAdapter
 from ingestion.adapters.exchangerates import ExchangeRatesAdapter
 from ingestion.adapters.fred import FredAdapter
@@ -29,6 +30,7 @@ class SourceRegistry:
         self.register_adapter(WebPageAdapter.name, WebPageAdapter)
         self.register_adapter(CbrAdapter.name, CbrAdapter)
         self.register_adapter(CbrSecInfoAdapter.name, CbrSecInfoAdapter)
+        self.register_adapter(CbrTradeBalanceAdapter.name, CbrTradeBalanceAdapter)
         self.register_adapter(MoexAdapter.name, MoexAdapter)
         self.register_adapter(EiaAdapter.name, EiaAdapter)
         self.register_adapter(FredAdapter.name, FredAdapter)
