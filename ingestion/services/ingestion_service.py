@@ -147,28 +147,42 @@ class IngestionService:
 
         valid_observations, duplicate_count = self.validation.deduplicate_batch(observations)
         storage_source = await self._ensure_source(source)
+        series_by_code = await self._ensure_series_batch(
+            source,
+            {observation.series_code for observation in valid_observations},
+        )
+        existing_keys = await self._existing_observation_keys(storage_source.id, series_by_code, valid_observations)
 
         loaded_count = 0
+        new_entities: list[RawObservation] = []
         for observation in valid_observations:
-            storage_series = await self._ensure_series(source, observation.series_code)
-            if await self._already_loaded(storage_series.id, storage_source.id, observation):
+            storage_series = series_by_code[observation.series_code]
+            key = self._observation_storage_key(storage_series.id, observation)
+            if key in existing_keys:
                 duplicate_count += 1
                 continue
-            await self.observations.insert(
-                series_id=storage_series.id,
-                source_id=storage_source.id,
-                observed_at=observation.observed_at,
-                period_start=observation.period_start,
-                period_end=observation.period_end,
-                value_numeric=observation.value_numeric,
-                value_text=observation.value_text,
-                publication_at=observation.publication_at,
-                vintage_at=observation.vintage_at,
-                is_revised=observation.is_revised,
-                is_final=observation.is_final,
-                raw_payload=observation.raw_payload,
+            existing_keys.add(key)
+            new_entities.append(
+                RawObservation(
+                    series_id=storage_series.id,
+                    source_id=storage_source.id,
+                    observed_at=observation.observed_at,
+                    period_start=observation.period_start,
+                    period_end=observation.period_end,
+                    value_numeric=observation.value_numeric,
+                    value_text=observation.value_text,
+                    publication_at=observation.publication_at,
+                    vintage_at=observation.vintage_at,
+                    is_revised=observation.is_revised,
+                    is_final=observation.is_final,
+                    raw_payload=observation.raw_payload,
+                )
             )
             loaded_count += 1
+
+        if new_entities:
+            self.session.add_all(new_entities)
+            await self.session.flush()
 
         if commit:
             try:
@@ -198,6 +212,32 @@ class IngestionService:
             series_code=series_code,
             series_name=series_definition.series_name if series_definition and series_definition.series_name else series_code,
         )
+
+    async def _ensure_series_batch(self, source: SourceDefinition, series_codes: set[str]) -> dict[str, object]:
+        if not series_codes:
+            return {}
+
+        stmt = select(self.series.model).where(self.series.model.series_code.in_(series_codes))
+        existing_rows = list((await self.session.scalars(stmt)).all())
+        series_by_code = {row.series_code: row for row in existing_rows}
+
+        missing_codes = series_codes - set(series_by_code)
+        if missing_codes:
+            definitions = {item.series_code: item for item in source.series}
+            new_rows = []
+            for series_code in missing_codes:
+                definition = definitions.get(series_code)
+                new_rows.append(
+                    self.series.model(
+                        series_code=series_code,
+                        series_name=definition.series_name if definition and definition.series_name else series_code,
+                    )
+                )
+            self.session.add_all(new_rows)
+            await self.session.flush()
+            series_by_code.update({row.series_code: row for row in new_rows})
+
+        return series_by_code
 
 
     async def _latest_observed_at_by_series(self, source: SourceDefinition) -> dict[str, datetime]:
@@ -237,6 +277,52 @@ class IngestionService:
         else:
             stmt = stmt.where(RawObservation.value_numeric == Decimal(observation.value_numeric))
         return await self.session.scalar(stmt) is not None
+
+    async def _existing_observation_keys(
+        self,
+        source_id,
+        series_by_code: dict[str, object],
+        observations: list[RawObservationIn],
+    ) -> set[tuple[object, ...]]:
+        if not observations:
+            return set()
+
+        series_ids = {series_by_code[observation.series_code].id for observation in observations}
+        min_observed_at = min(observation.observed_at for observation in observations)
+        max_observed_at = max(observation.observed_at for observation in observations)
+        stmt = select(
+            RawObservation.series_id,
+            RawObservation.observed_at,
+            RawObservation.publication_at,
+            RawObservation.value_numeric,
+            RawObservation.value_text,
+        ).where(
+            RawObservation.source_id == source_id,
+            RawObservation.series_id.in_(series_ids),
+            RawObservation.observed_at >= min_observed_at,
+            RawObservation.observed_at <= max_observed_at,
+        )
+        rows = (await self.session.execute(stmt)).all()
+        return {
+            (
+                series_id,
+                observed_at,
+                publication_at,
+                Decimal(value_numeric) if value_numeric is not None else None,
+                value_text,
+            )
+            for series_id, observed_at, publication_at, value_numeric, value_text in rows
+        }
+
+    @staticmethod
+    def _observation_storage_key(series_id, observation: RawObservationIn) -> tuple[object, ...]:
+        return (
+            series_id,
+            observation.observed_at,
+            observation.publication_at,
+            Decimal(observation.value_numeric) if observation.value_numeric is not None else None,
+            observation.value_text,
+        )
 
     @staticmethod
     def _to_storage_source_type(source_type: SourceKind) -> SourceType:

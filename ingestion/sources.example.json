@@ -1398,6 +1398,171 @@
       "metadata": {
         "note": "Live updater for RU_INDUSTRIAL_PRODUCTION. Each run reads Rosstat enterprise_industrial, parses current ind_baza_* XLSX files for OKVED2 BCDE, compares against the latest stored RU_INDUSTRIAL_PRODUCTION observation globally, and inserts only newly published months. publication_at is resolved from recent Rosstat news releases where available; vintage_at is the update date of the source XLSX file."
       }
+    },
+    {
+      "source_code": "RU_TAX_DUMMY_CALENDAR",
+      "source_name": "Russia tax dummy calendar",
+      "source_type": "manual",
+      "adapter_name": "ru_tax_dummy_calendar",
+      "enabled": true,
+      "schedule_cron": "0 7 * * *",
+      "csv": {
+        "path": "storage/exports/ru_tax_dummy_calendar_2015_2026.csv",
+        "delimiter": ",",
+        "date_column": "date",
+        "date_format": "%Y-%m-%d"
+      },
+      "series": [
+        {
+          "series_code": "RU_TAX_RU_BUSINESS_DAY",
+          "series_name": "Russia tax calendar is RU business day"
+        },
+        {
+          "series_code": "RU_TAX_ANY_DUE_DUMMY",
+          "series_name": "Russia tax calendar any tax due dummy"
+        },
+        {
+          "series_code": "RU_TAX_DUE_COUNT",
+          "series_name": "Russia tax calendar tax due count"
+        },
+        {
+          "series_code": "RU_TAX_ANY_WINDOW_T_MINUS_3_TO_T",
+          "series_name": "Russia tax calendar any tax due window t-3 to t"
+        },
+        {
+          "series_code": "RU_TAX_WEEK_DUMMY",
+          "series_name": "Russia tax calendar tax week dummy"
+        },
+        {
+          "series_code": "RU_TAX_ANY_T_MINUS_3",
+          "series_name": "Russia tax calendar any tax t-3 dummy"
+        },
+        {
+          "series_code": "RU_TAX_ANY_T_MINUS_2",
+          "series_name": "Russia tax calendar any tax t-2 dummy"
+        },
+        {
+          "series_code": "RU_TAX_ANY_T_MINUS_1",
+          "series_name": "Russia tax calendar any tax t-1 dummy"
+        },
+        {
+          "series_code": "RU_TAX_ANY_T0",
+          "series_name": "Russia tax calendar any tax t0 dummy"
+        },
+        {
+          "series_code": "RU_TAX_VAT_DUE_DUMMY",
+          "series_name": "Russia tax calendar VAT due dummy"
+        },
+        {
+          "series_code": "RU_TAX_VAT_T_MINUS_3",
+          "series_name": "Russia tax calendar VAT t-3 dummy"
+        },
+        {
+          "series_code": "RU_TAX_VAT_T_MINUS_2",
+          "series_name": "Russia tax calendar VAT t-2 dummy"
+        },
+        {
+          "series_code": "RU_TAX_VAT_T_MINUS_1",
+          "series_name": "Russia tax calendar VAT t-1 dummy"
+        },
+        {
+          "series_code": "RU_TAX_VAT_T0",
+          "series_name": "Russia tax calendar VAT t0 dummy"
+        },
+        {
+          "series_code": "RU_TAX_VAT_WINDOW_T_MINUS_3_TO_T",
+          "series_name": "Russia tax calendar VAT window t-3 to t"
+        },
+        {
+          "series_code": "RU_TAX_PROFIT_DUE_DUMMY",
+          "series_name": "Russia tax calendar profit tax due dummy"
+        },
+        {
+          "series_code": "RU_TAX_PROFIT_T_MINUS_3",
+          "series_name": "Russia tax calendar profit tax t-3 dummy"
+        },
+        {
+          "series_code": "RU_TAX_PROFIT_T_MINUS_2",
+          "series_name": "Russia tax calendar profit tax t-2 dummy"
+        },
+        {
+          "series_code": "RU_TAX_PROFIT_T_MINUS_1",
+          "series_name": "Russia tax calendar profit tax t-1 dummy"
+        },
+        {
+          "series_code": "RU_TAX_PROFIT_T0",
+          "series_name": "Russia tax calendar profit tax t0 dummy"
+        },
+        {
+          "series_code": "RU_TAX_PROFIT_WINDOW_T_MINUS_3_TO_T",
+          "series_name": "Russia tax calendar profit tax window t-3 to t"
+        },
+        {
+          "series_code": "RU_TAX_NDPI_DUE_DUMMY",
+          "series_name": "Russia tax calendar NDPI due dummy"
+        },
+        {
+          "series_code": "RU_TAX_NDPI_T_MINUS_3",
+          "series_name": "Russia tax calendar NDPI t-3 dummy"
+        },
+        {
+          "series_code": "RU_TAX_NDPI_T_MINUS_2",
+          "series_name": "Russia tax calendar NDPI t-2 dummy"
+        },
+        {
+          "series_code": "RU_TAX_NDPI_T_MINUS_1",
+          "series_name": "Russia tax calendar NDPI t-1 dummy"
+        },
+        {
+          "series_code": "RU_TAX_NDPI_T0",
+          "series_name": "Russia tax calendar NDPI t0 dummy"
+        },
+        {
+          "series_code": "RU_TAX_NDPI_WINDOW_T_MINUS_3_TO_T",
+          "series_name": "Russia tax calendar NDPI window t-3 to t"
+        },
+        {
+          "series_code": "RU_TAX_QTR_PAYMENT_DUE_DUMMY",
+          "series_name": "Russia tax calendar quarter tax payment due dummy"
+        },
+        {
+          "series_code": "RU_TAX_QTR_PAYMENT_T_MINUS_3",
+          "series_name": "Russia tax calendar quarter tax payment t-3 dummy"
+        },
+        {
+          "series_code": "RU_TAX_QTR_PAYMENT_T_MINUS_2",
+          "series_name": "Russia tax calendar quarter tax payment t-2 dummy"
+        },
+        {
+          "series_code": "RU_TAX_QTR_PAYMENT_T_MINUS_1",
+          "series_name": "Russia tax calendar quarter tax payment t-1 dummy"
+        },
+        {
+          "series_code": "RU_TAX_QTR_PAYMENT_T0",
+          "series_name": "Russia tax calendar quarter tax payment t0 dummy"
+        },
+        {
+          "series_code": "RU_TAX_QTR_PAYMENT_WINDOW_T_MINUS_3_TO_T",
+          "series_name": "Russia tax calendar quarter tax payment window t-3 to t"
+        },
+        {
+          "series_code": "RU_TAX_QTR_END_LAST_BUSINESS_DAY",
+          "series_name": "Russia tax calendar quarter end last business day dummy"
+        },
+        {
+          "series_code": "RU_TAX_QTR_END_WINDOW_T_MINUS_3_TO_T",
+          "series_name": "Russia tax calendar quarter end window t-3 to t"
+        }
+      ],
+      "metadata": {
+        "auto_extend": {
+          "enabled": true,
+          "release_month": 9,
+          "release_window_days": 15,
+          "production_calendar_url_template": "https://xmlcalendar.ru/data/ru/{year}/calendar.json"
+        },
+        "note": "Loads daily RU tax dummy variables from storage/exports/ru_tax_dummy_calendar_2015_2026.csv. The scheduled run checks daily; only during the usual production-calendar release window (September +/- 15 days) it looks for the next year's RU production calendar and appends generated dummy rows when the calendar becomes available."
+      }
     }
   ],
   "todos": [

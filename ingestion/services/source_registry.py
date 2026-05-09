@@ -15,6 +15,7 @@ from ingestion.adapters.moex import MoexAdapter
 from ingestion.adapters.profinance import ProFinanceAdapter
 from ingestion.adapters.rosstat_industrial import RosstatIndustrialAdapter
 from ingestion.adapters.rosstat_retail_sales import RosstatRetailSalesAdapter
+from ingestion.adapters.ru_tax_dummy_calendar import RuTaxDummyCalendarAdapter
 from ingestion.adapters.web import WebPageAdapter
 from ingestion.adapters.yahoo import YahooAdapter
 from ingestion.schemas.sources import SourceDefinition
@@ -39,6 +40,7 @@ class SourceRegistry:
         self.register_adapter(ManualCsvAdapter.name, ManualCsvAdapter)
         self.register_adapter(RosstatIndustrialAdapter.name, RosstatIndustrialAdapter)
         self.register_adapter(RosstatRetailSalesAdapter.name, RosstatRetailSalesAdapter)
+        self.register_adapter(RuTaxDummyCalendarAdapter.name, RuTaxDummyCalendarAdapter)
         self.register_adapter(TradingViewAdapter.name, TradingViewAdapter)
         self.register_adapter(ProFinanceAdapter.name, ProFinanceAdapter)
 
