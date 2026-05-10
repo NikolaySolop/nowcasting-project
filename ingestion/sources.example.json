@@ -491,40 +491,6 @@
       ]
     },
     {
-      "source_code": "PROFINANCE_URALS",
-      "source_name": "ProFinance Urals 15m",
-      "source_type": "web",
-      "adapter_name": "profinance",
-      "enabled": false,
-      "schedule_cron": "*/15 * * * *",
-      "scrape": {
-        "url": "https://www.profinance.ru/urals/",
-        "parser": "text",
-        "series_code": "PROFINANCE:URALS",
-        "extra": {
-          "ticker": "Urals Med",
-          "interval_minutes": 15,
-          "discover_page": true,
-          "page_urls": [
-            "https://profinance.broker-obzor.com/chart/urals/"
-          ],
-          "require_full_backfill": false,
-          "current_chart_assets": "charts/20240527",
-          "current_page_script": "urals/ws_2026030301.js"
-        },
-        "start_date": "01.01.2015"
-      },
-      "series": [
-        {
-          "series_code": "PROFINANCE:URALS",
-          "series_name": "Urals crude oil, USD/bbl"
-        }
-      ],
-      "metadata": {
-        "note": "Set scrape.extra.websocket_url/websocket_messages or history_url after confirming the current ProFinance chart endpoint."
-      }
-    },
-    {
       "source_code": "EXCHANGERATES_URALS_USD_DAILY",
       "source_name": "ExchangeRates.org.uk URALS/USD daily close",
       "source_type": "web",

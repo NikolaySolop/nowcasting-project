@@ -13,7 +13,6 @@ from ingestion.adapters.manual_csv import ManualCsvAdapter
 from ingestion.adapters.minfin_oilgas import MinfinOilGasAdapter
 from ingestion.adapters.tradingview import TradingViewAdapter
 from ingestion.adapters.moex import MoexAdapter
-from ingestion.adapters.profinance import ProFinanceAdapter
 from ingestion.adapters.rosstat_industrial import RosstatIndustrialAdapter
 from ingestion.adapters.rosstat_retail_sales import RosstatRetailSalesAdapter
 from ingestion.adapters.ru_tax_dummy_calendar import RuTaxDummyCalendarAdapter
@@ -44,7 +43,6 @@ class SourceRegistry:
         self.register_adapter(RosstatRetailSalesAdapter.name, RosstatRetailSalesAdapter)
         self.register_adapter(RuTaxDummyCalendarAdapter.name, RuTaxDummyCalendarAdapter)
         self.register_adapter(TradingViewAdapter.name, TradingViewAdapter)
-        self.register_adapter(ProFinanceAdapter.name, ProFinanceAdapter)
 
     def register_adapter(self, name: str, factory: AdapterFactory) -> None:
         self._adapters[name] = factory
