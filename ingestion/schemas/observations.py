@@ -56,6 +56,33 @@ class RawObservationIn(BaseModel):
         )
 
 
+class ObservationIn(BaseModel):
+    series_code: str = Field(min_length=1, max_length=50)
+    source_code: str = Field(min_length=1, max_length=50)
+    reference_start: datetime
+    reference_end: datetime
+    value: Decimal
+    published_at: datetime
+
+    @field_validator("reference_start", "reference_end", "published_at")
+    @classmethod
+    def ensure_timezone(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value
+
+    @property
+    def duplicate_key(self) -> tuple[object, ...]:
+        return (
+            self.series_code,
+            self.source_code,
+            self.reference_start,
+            self.reference_end,
+            self.published_at,
+            self.value,
+        )
+
+
 class IngestionBatch(BaseModel):
     source_code: str
     loaded_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

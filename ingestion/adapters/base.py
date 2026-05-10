@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable
 
 from ingestion.core.config import Settings
-from ingestion.schemas.observations import RawObservationIn
+from ingestion.schemas.observations import ObservationIn, RawObservationIn
 from ingestion.schemas.sources import SourceDefinition
 
 
@@ -23,6 +23,7 @@ class FetchContext:
 @dataclass
 class FetchResult:
     observations: list[RawObservationIn] = field(default_factory=list)
+    table_observations: list[ObservationIn] = field(default_factory=list)
     loaded_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     raw_payload: dict[str, Any] | None = None
     persisted_loaded_count: int = 0

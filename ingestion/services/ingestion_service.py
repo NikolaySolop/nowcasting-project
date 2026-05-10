@@ -10,12 +10,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ingestion.adapters.base import AdapterError, BaseAdapter, FetchContext, FetchResult
 from ingestion.core.config import Settings
 from ingestion.schemas.jobs import IngestionJobResult
-from ingestion.schemas.observations import RawObservationIn
+from ingestion.schemas.observations import ObservationIn, RawObservationIn
 from ingestion.schemas.sources import SourceDefinition, SourceKind
 from ingestion.services.source_registry import SourceRegistry
 from ingestion.services.validation_service import ValidationService
 from storage.models.enums import SourceType
+from storage.models.observations import Observation
 from storage.models.raw_obsevations import RawObservation
+from storage.repositories.observation import ObservationRepository
 from storage.repositories.raw_observation import RawObservationRepository
 from storage.repositories.series import SeriesRepository
 from storage.repositories.source import DataSourceRepository
@@ -38,6 +40,7 @@ class IngestionService:
         self.sources = DataSourceRepository(session)
         self.series = SeriesRepository(session)
         self.observations = RawObservationRepository(session)
+        self.table_observations = ObservationRepository(session)
 
     async def run(self, source_codes: list[str] | None = None) -> IngestionJobResult:
         selected_sources = self._select_sources(source_codes)
@@ -79,6 +82,13 @@ class IngestionService:
             loaded_at=fetch_result.loaded_at,
             commit=False,
         )
+        table_loaded_count, table_duplicate_count = await self._store_table_observations(
+            source,
+            fetch_result.table_observations,
+            commit=False,
+        )
+        loaded_count += table_loaded_count
+        duplicate_count += table_duplicate_count
         loaded_count += fetch_result.persisted_loaded_count
         duplicate_count += fetch_result.persisted_duplicate_count
 
@@ -91,6 +101,58 @@ class IngestionService:
                 "loaded_at": fetch_result.loaded_at.isoformat(),
             },
         )
+        return loaded_count, duplicate_count
+
+    async def _store_table_observations(
+        self,
+        source: SourceDefinition,
+        observations: list[ObservationIn],
+        *,
+        commit: bool,
+    ) -> tuple[int, int]:
+        if not observations:
+            return 0, 0
+
+        valid_observations, duplicate_count = self.validation.deduplicate_batch(observations)
+        storage_source = await self._ensure_source(source)
+        series_by_code = await self._ensure_series_batch(
+            source,
+            {observation.series_code for observation in valid_observations},
+        )
+        existing_keys = await self._existing_table_observation_keys(storage_source.id, series_by_code, valid_observations)
+
+        loaded_count = 0
+        new_entities: list[Observation] = []
+        for observation in valid_observations:
+            storage_series = series_by_code[observation.series_code]
+            key = self._table_observation_storage_key(storage_series.id, observation)
+            if key in existing_keys:
+                duplicate_count += 1
+                continue
+            existing_keys.add(key)
+            new_entities.append(
+                Observation(
+                    series_id=storage_series.id,
+                    source_id=storage_source.id,
+                    reference_start=observation.reference_start,
+                    reference_end=observation.reference_end,
+                    value=observation.value,
+                    published_at=observation.published_at,
+                )
+            )
+            loaded_count += 1
+
+        if new_entities:
+            self.session.add_all(new_entities)
+            await self.session.flush()
+
+        if commit:
+            try:
+                await self.session.commit()
+            except IntegrityError:
+                await self.session.rollback()
+                raise
+
         return loaded_count, duplicate_count
 
     async def _fetch_with_retries(
@@ -239,8 +301,10 @@ class IngestionService:
 
         return series_by_code
 
-
     async def _latest_observed_at_by_series(self, source: SourceDefinition) -> dict[str, datetime]:
+        if source.adapter_name == "fred_sofr":
+            return await self._latest_reference_start_by_series(source)
+
         use_global = bool((source.scrape.extra if source.scrape else {}).get("global_series_latest"))
         if use_global:
             series_codes = [s.series_code for s in source.series]
@@ -260,6 +324,24 @@ class IngestionService:
             start_date = start_date.replace(tzinfo=timezone.utc)
         interval_minutes = int((source.scrape.extra or {}).get("interval_minutes", 15))
         bootstrap_latest = start_date - timedelta(minutes=max(1, interval_minutes))
+        for series in source.series:
+            existing.setdefault(series.series_code, bootstrap_latest)
+        return existing
+
+    async def _latest_reference_start_by_series(self, source: SourceDefinition) -> dict[str, datetime]:
+        storage_source = await self.sources.get_by_source_code(source.source_code)
+        if storage_source is None:
+            existing: dict[str, datetime] = {}
+        else:
+            existing = await self.table_observations.latest_reference_start_by_series(storage_source.id)
+
+        start_date = source.scrape.start_date if source.scrape else None
+        if start_date is None:
+            return existing
+
+        if start_date.tzinfo is None:
+            start_date = start_date.replace(tzinfo=timezone.utc)
+        bootstrap_latest = start_date - timedelta(days=1)
         for series in source.series:
             existing.setdefault(series.series_code, bootstrap_latest)
         return existing
@@ -322,6 +404,52 @@ class IngestionService:
             observation.publication_at,
             Decimal(observation.value_numeric) if observation.value_numeric is not None else None,
             observation.value_text,
+        )
+
+    async def _existing_table_observation_keys(
+        self,
+        source_id,
+        series_by_code: dict[str, object],
+        observations: list[ObservationIn],
+    ) -> set[tuple[object, ...]]:
+        if not observations:
+            return set()
+
+        series_ids = {series_by_code[observation.series_code].id for observation in observations}
+        min_reference_start = min(observation.reference_start for observation in observations)
+        max_reference_start = max(observation.reference_start for observation in observations)
+        stmt = select(
+            Observation.series_id,
+            Observation.reference_start,
+            Observation.reference_end,
+            Observation.published_at,
+            Observation.value,
+        ).where(
+            Observation.source_id == source_id,
+            Observation.series_id.in_(series_ids),
+            Observation.reference_start >= min_reference_start,
+            Observation.reference_start <= max_reference_start,
+        )
+        rows = (await self.session.execute(stmt)).all()
+        return {
+            (
+                series_id,
+                reference_start,
+                reference_end,
+                published_at,
+                Decimal(value),
+            )
+            for series_id, reference_start, reference_end, published_at, value in rows
+        }
+
+    @staticmethod
+    def _table_observation_storage_key(series_id, observation: ObservationIn) -> tuple[object, ...]:
+        return (
+            series_id,
+            observation.reference_start,
+            observation.reference_end,
+            observation.published_at,
+            Decimal(observation.value),
         )
 
     @staticmethod
