@@ -46,8 +46,6 @@ class CbrAdapter(BaseAdapter):
             "key_rate_meetings",
             "key_rate_meeting_dummy",
             "meetings_calendar",
-            "key_rate_decision_publications",
-            "key_rate_decision_publication_dummy",
         }:
             return await self._fetch_key_rate_meetings(context)
         if mode in {"key_rate", "key_rate_history", "history_key_rate"}:
