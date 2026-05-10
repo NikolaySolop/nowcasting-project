@@ -11,10 +11,10 @@ from ingestion.adapters.base import AdapterError, BaseAdapter, FetchContext, Fet
 from ingestion.core.config import Settings
 from ingestion.schemas.jobs import IngestionJobResult
 from ingestion.schemas.observations import ObservationIn, RawObservationIn
-from ingestion.schemas.sources import SourceDefinition, SourceKind
+from ingestion.schemas.sources import SeriesDefinition, SourceDefinition, SourceKind
 from ingestion.services.source_registry import SourceRegistry
 from ingestion.services.validation_service import ValidationService
-from storage.models.enums import SourceType
+from storage.models.enums import Frequency, SourceType
 from storage.models.observations import Observation
 from storage.models.raw_obsevations import RawObservation
 from storage.repositories.observation import ObservationRepository
@@ -267,12 +267,12 @@ class IngestionService:
 
     async def _ensure_series(self, source: SourceDefinition, series_code: str):
         existing = await self.series.get_by_series_code(series_code)
-        if existing is not None:
-            return existing
         series_definition = next((item for item in source.series if item.series_code == series_code), None)
+        if existing is not None:
+            await self._update_series_metadata(existing, series_definition)
+            return existing
         return await self.series.insert(
-            series_code=series_code,
-            series_name=series_definition.series_name if series_definition and series_definition.series_name else series_code,
+            **self._series_values(series_code, series_definition),
         )
 
     async def _ensure_series_batch(self, source: SourceDefinition, series_codes: set[str]) -> dict[str, object]:
@@ -289,17 +289,46 @@ class IngestionService:
             new_rows = []
             for series_code in missing_codes:
                 definition = definitions.get(series_code)
-                new_rows.append(
-                    self.series.model(
-                        series_code=series_code,
-                        series_name=definition.series_name if definition and definition.series_name else series_code,
-                    )
-                )
+                new_rows.append(self.series.model(**self._series_values(series_code, definition)))
             self.session.add_all(new_rows)
             await self.session.flush()
             series_by_code.update({row.series_code: row for row in new_rows})
 
+        definitions = {item.series_code: item for item in source.series}
+        for series_code, row in series_by_code.items():
+            if series_code in definitions:
+                await self._update_series_metadata(row, definitions[series_code])
+
         return series_by_code
+
+    @staticmethod
+    def _series_values(series_code: str, definition: SeriesDefinition | None) -> dict[str, object]:
+        values: dict[str, object] = {
+            "series_code": series_code,
+            "series_name": definition.series_name if definition and definition.series_name else series_code,
+        }
+        if definition is None:
+            return values
+        for field in ("frequency", "group_code", "subgroup_code", "description", "units"):
+            value = getattr(definition, field)
+            if value is not None:
+                if field == "frequency":
+                    value = Frequency(value)
+                values[field] = value
+        return values
+
+    async def _update_series_metadata(self, series: object, definition: SeriesDefinition | None) -> None:
+        if definition is None:
+            return
+
+        changed = False
+        for field, value in self._series_values(series.series_code, definition).items():
+            if getattr(series, field) != value:
+                setattr(series, field, value)
+                changed = True
+
+        if changed:
+            await self.session.flush()
 
     async def _latest_observed_at_by_series(self, source: SourceDefinition) -> dict[str, datetime]:
         if source.adapter_name == "fred_sofr":

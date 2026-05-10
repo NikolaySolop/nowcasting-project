@@ -66,6 +66,11 @@ class CsvSpec(BaseModel):
 class SeriesDefinition(BaseModel):
     series_code: str = Field(min_length=1, max_length=50)
     series_name: str | None = None
+    frequency: Literal["15min", "daily", "weekly", "monthly", "annual"] | None = None
+    group_code: str | None = None
+    subgroup_code: str | None = None
+    description: str | None = None
+    units: str | None = None
 
 
 class SourceDefinition(BaseModel):

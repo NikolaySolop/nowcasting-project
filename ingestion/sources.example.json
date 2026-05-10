@@ -50,7 +50,12 @@
       "series": [
         {
           "series_code": "FRED:SOFR",
-          "series_name": "Secured Overnight Financing Rate, percent"
+          "series_name": "Secured Overnight Financing Rate, percent",
+          "frequency": "daily",
+          "group_code": "global_usd_risk",
+          "description": "Short-term U.S. dollar money market rate, a base measure of USD funding conditions.",
+          "units": "percent",
+          "subgroup_code": "usd_money_market"
         }
       ]
     },
@@ -125,7 +130,10 @@
       "series": [
         {
           "series_code": "FX_IDC:USDEUR",
-          "series_name": "U.S. Dollar / Euro"
+          "series_name": "U.S. Dollar / Euro",
+          "group_code": "global_usd_risk",
+          "subgroup_code": "global_fx",
+          "description": "Indicator of broad U.S. dollar strength through the USD/EUR exchange rate."
         }
       ]
     },
@@ -151,7 +159,10 @@
       "series": [
         {
           "series_code": "TVC:DXY",
-          "series_name": "U.S. Dollar Index (DXY)"
+          "series_name": "U.S. Dollar Index (DXY)",
+          "group_code": "global_usd_risk",
+          "subgroup_code": "usd_index",
+          "description": "U.S. Dollar Index, a key external pressure factor for RUB/USD."
         }
       ]
     },
@@ -175,7 +186,10 @@
       "series": [
         {
           "series_code": "TVC:US02Y",
-          "series_name": "U.S. Treasury 2Y Yield"
+          "series_name": "U.S. Treasury 2Y Yield",
+          "group_code": "global_usd_risk",
+          "subgroup_code": "us_rates",
+          "description": "2-year U.S. Treasury yield, sensitive to Federal Reserve expectations."
         }
       ]
     },
@@ -199,7 +213,10 @@
       "series": [
         {
           "series_code": "TVC:US10Y",
-          "series_name": "U.S. Treasury 10Y Yield"
+          "series_name": "U.S. Treasury 10Y Yield",
+          "group_code": "global_usd_risk",
+          "subgroup_code": "us_rates",
+          "description": "10-year U.S. Treasury yield, a global rates and risk factor."
         }
       ]
     },
@@ -252,7 +269,10 @@
       "series": [
         {
           "series_code": "ECONOMICS:USCOSC",
-          "series_name": "United States Crude Oil Stocks Change, million barrels"
+          "series_name": "United States Crude Oil Stocks Change, million barrels",
+          "group_code": "energy_fundamentals",
+          "subgroup_code": "oil_stocks",
+          "description": "Change in U.S. crude oil inventories, a weekly fundamental oil shock."
         }
       ]
     },
@@ -278,7 +298,10 @@
       "series": [
         {
           "series_code": "ECONOMICS:USGSCH",
-          "series_name": "United States Gasoline Stocks Change, million barrels"
+          "series_name": "United States Gasoline Stocks Change, million barrels",
+          "group_code": "energy_fundamentals",
+          "subgroup_code": "gasoline_stocks",
+          "description": "Change in U.S. gasoline inventories, an indicator of oil product demand and balance."
         }
       ]
     },
@@ -304,7 +327,10 @@
       "series": [
         {
           "series_code": "ECONOMICS:USDFS",
-          "series_name": "United States Distillate Stocks Change, million barrels"
+          "series_name": "United States Distillate Stocks Change, million barrels",
+          "group_code": "energy_fundamentals",
+          "subgroup_code": "distillate_stocks",
+          "description": "Change in distillate inventories, important for the diesel market."
         }
       ]
     },
@@ -330,7 +356,10 @@
       "series": [
         {
           "series_code": "ECONOMICS:USCOR",
-          "series_name": "United States Crude Oil Rotary Rigs, units"
+          "series_name": "United States Crude Oil Rotary Rigs, units",
+          "group_code": "energy_fundamentals",
+          "subgroup_code": "rig_count",
+          "description": "U.S. crude oil rig count, an indicator of future oil supply."
         }
       ]
     },
@@ -382,7 +411,10 @@
       "series": [
         {
           "series_code": "ICEENDEX:TFM1!",
-          "series_name": "Dutch TTF Natural Gas Futures 1st Contract"
+          "series_name": "Dutch TTF Natural Gas Futures 1st Contract",
+          "group_code": "energy",
+          "subgroup_code": "gas_prices",
+          "description": "First TTF gas contract, an indicator of the European gas market."
         }
       ]
     },
@@ -408,7 +440,10 @@
       "series": [
         {
           "series_code": "ICEENDEX:TFM2!",
-          "series_name": "Dutch TTF Natural Gas Futures 2nd Contract"
+          "series_name": "Dutch TTF Natural Gas Futures 2nd Contract",
+          "group_code": "energy",
+          "subgroup_code": "gas_prices",
+          "description": "Second TTF gas contract, used to monitor the shape of the gas forward curve."
         }
       ]
     },
@@ -434,7 +469,10 @@
       "series": [
         {
           "series_code": "ICEEUR:ULS1!",
-          "series_name": "Low Sulphur Gasoil Futures"
+          "series_name": "Low Sulphur Gasoil Futures",
+          "group_code": "energy",
+          "subgroup_code": "oil_products",
+          "description": "Low sulphur gasoil futures, a proxy for oil products and refining margins."
         }
       ]
     },
@@ -460,7 +498,10 @@
       "series": [
         {
           "series_code": "NYMEX:GZ1!",
-          "series_name": "NY Harbor ULSD Financial Futures"
+          "series_name": "NY Harbor ULSD Financial Futures",
+          "group_code": "energy",
+          "subgroup_code": "oil_products",
+          "description": "NY Harbor ULSD financial futures, a proxy for the diesel market."
         }
       ]
     },
@@ -486,7 +527,10 @@
       "series": [
         {
           "series_code": "NYMEX:HO1!",
-          "series_name": "NY Harbor ULSD Futures"
+          "series_name": "NY Harbor ULSD Futures",
+          "group_code": "energy",
+          "subgroup_code": "oil_products",
+          "description": "Heating oil and ULSD futures, an additional oil products indicator."
         }
       ]
     },
@@ -527,7 +571,10 @@
       "series": [
         {
           "series_code": "EXCHANGERATES:URALSUSD:DAILY",
-          "series_name": "Urals crude oil, USD/bbl, daily close"
+          "series_name": "Urals crude oil, USD/bbl, daily close",
+          "group_code": "energy",
+          "subgroup_code": "oil_price_daily",
+          "description": "Daily Urals crude price, a fundamental oil factor for the ruble."
         }
       ],
       "metadata": {
@@ -554,7 +601,10 @@
       "series": [
         {
           "series_code": "EXCHANGERATES:URALSUSD:LIVE15M",
-          "series_name": "Urals crude oil, USD/bbl, live 15m snapshot"
+          "series_name": "Urals crude oil, USD/bbl, live 15m snapshot",
+          "group_code": "energy",
+          "subgroup_code": "oil_price_intraday",
+          "description": "Intraday update of the oil factor, useful for 15-minute nowcasting."
         }
       ],
       "metadata": {
@@ -586,7 +636,10 @@
       "series": [
         {
           "series_code": "FX_IDC:USDRUB",
-          "series_name": "U.S. Dollar / Russian Ruble"
+          "series_name": "U.S. Dollar / Russian Ruble",
+          "group_code": "fx_market",
+          "subgroup_code": "market_usdrub_proxy",
+          "description": "Market USD/RUB proxy that can provide more timely information than the official Bank of Russia rate."
         }
       ]
     },
@@ -613,7 +666,10 @@
       "series": [
         {
           "series_code": "CBR:RUBUSD",
-          "series_name": "CBR official USD/RUB rate, RUB per 1 USD"
+          "series_name": "CBR official USD/RUB rate, RUB per 1 USD",
+          "group_code": "target",
+          "subgroup_code": "official_fx_rate",
+          "description": "Forecast target: the Bank of Russia official RUB/USD exchange rate."
         }
       ],
       "metadata": {
@@ -640,7 +696,10 @@
       "series": [
         {
           "series_code": "MOEX:CNYRUB_TOM",
-          "series_name": "MOEX CNY/RUB TOM, daily close"
+          "series_name": "MOEX CNY/RUB TOM, daily close",
+          "group_code": "fx_market",
+          "subgroup_code": "cnyrub_market",
+          "description": "Important market proxy for the ruble through CNY/RUB, especially when the role of USD/RUB on MOEX is limited."
         }
       ]
     },
@@ -748,7 +807,10 @@
       "series": [
         {
           "series_code": "MOEX:RTSI",
-          "series_name": "RTS Index, daily close"
+          "series_name": "RTS Index, daily close",
+          "group_code": "ru_market_risk",
+          "subgroup_code": "equity_index_daily",
+          "description": "RTS Index, a proxy for Russian equity and risk sentiment."
         }
       ]
     },
@@ -775,7 +837,10 @@
       "series": [
         {
           "series_code": "MOEX:RTSI:15M",
-          "series_name": "RTS Index, 15m close aggregated from 1m candles"
+          "series_name": "RTS Index, 15m close aggregated from 1m candles",
+          "group_code": "ru_market_risk",
+          "subgroup_code": "equity_index_intraday",
+          "description": "Intraday RTS Index, a timely Russian market risk sentiment indicator."
         }
       ],
       "metadata": {
@@ -805,7 +870,10 @@
       "series": [
         {
           "series_code": "CBR:KEY_RATE",
-          "series_name": "Bank of Russia key rate, percent per annum"
+          "series_name": "Bank of Russia key rate, percent per annum",
+          "group_code": "ru_rates",
+          "subgroup_code": "monetary_policy",
+          "description": "Bank of Russia key rate, the core monetary policy factor."
         }
       ],
       "metadata": {
@@ -832,7 +900,10 @@
       "series": [
         {
           "series_code": "CBR:KEY_RATE_MEETING_DUMMY",
-          "series_name": "Bank of Russia key rate meeting dummy"
+          "series_name": "Bank of Russia key rate meeting dummy",
+          "group_code": "ru_rates",
+          "subgroup_code": "monetary_policy_event",
+          "description": "Bank of Russia meeting dummy, capturing monetary policy event risk."
         }
       ],
       "metadata": {
@@ -893,35 +964,59 @@
       "series": [
         {
           "series_code": "RUONIA_RATE",
-          "series_name": "RUONIA rate, percent per annum"
+          "series_name": "RUONIA rate, percent per annum",
+          "group_code": "ru_rates",
+          "subgroup_code": "money_market_rate",
+          "description": "Actual overnight ruble money market rate."
         },
         {
           "series_code": "RUONIA_VOLUME",
-          "series_name": "RUONIA transactions volume, billion RUB"
+          "series_name": "RUONIA transactions volume, billion RUB",
+          "group_code": "ru_rates",
+          "subgroup_code": "money_market_liquidity",
+          "description": "RUONIA transaction volume, a proxy for money market liquidity."
         },
         {
           "series_code": "RUONIA_TRADES_COUNT",
-          "series_name": "RUONIA transactions count"
+          "series_name": "RUONIA transactions count",
+          "group_code": "ru_rates",
+          "subgroup_code": "money_market_activity",
+          "description": "Number of RUONIA trades, a measure of money market activity."
         },
         {
           "series_code": "RUONIA_PARTICIPANTS_COUNT",
-          "series_name": "RUONIA participants count"
+          "series_name": "RUONIA participants count",
+          "group_code": "ru_rates",
+          "subgroup_code": "money_market_activity",
+          "description": "Number of RUONIA participants, a measure of market depth."
         },
         {
           "series_code": "RUONIA_MIN_RATE",
-          "series_name": "RUONIA minimum rate, percent per annum"
+          "series_name": "RUONIA minimum rate, percent per annum",
+          "group_code": "ru_rates",
+          "subgroup_code": "money_market_distribution",
+          "description": "Lower bound of RUONIA rates."
         },
         {
           "series_code": "RUONIA_P25_RATE",
-          "series_name": "RUONIA 25th percentile rate, percent per annum"
+          "series_name": "RUONIA 25th percentile rate, percent per annum",
+          "group_code": "ru_rates",
+          "subgroup_code": "money_market_distribution",
+          "description": "25th percentile of RUONIA rates, describing the shape of the rate distribution."
         },
         {
           "series_code": "RUONIA_P75_RATE",
-          "series_name": "RUONIA 75th percentile rate, percent per annum"
+          "series_name": "RUONIA 75th percentile rate, percent per annum",
+          "group_code": "ru_rates",
+          "subgroup_code": "money_market_distribution",
+          "description": "75th percentile of RUONIA rates, describing the shape of the rate distribution."
         },
         {
           "series_code": "RUONIA_MAX_RATE",
-          "series_name": "RUONIA maximum rate, percent per annum"
+          "series_name": "RUONIA maximum rate, percent per annum",
+          "group_code": "ru_rates",
+          "subgroup_code": "money_market_distribution",
+          "description": "Upper bound of RUONIA rates, reflecting stress or dispersion in the money market."
         }
       ],
       "metadata": {
@@ -965,15 +1060,24 @@
       "series": [
         {
           "series_code": "RU_M2",
-          "series_name": "Russia money supply M2, billion RUB"
+          "series_name": "Russia money supply M2, billion RUB",
+          "group_code": "ru_credit_money",
+          "subgroup_code": "money_supply",
+          "description": "M2 money supply, an indicator of ruble liquidity."
         },
         {
           "series_code": "RU_CREDIT_HOUSEHOLDS",
-          "series_name": "Russia household loans, billion RUB"
+          "series_name": "Russia household loans, billion RUB",
+          "group_code": "ru_credit_money",
+          "subgroup_code": "credit",
+          "description": "Household loans, a proxy for domestic demand and credit activity."
         },
         {
           "series_code": "RU_CREDIT_CORPORATES",
-          "series_name": "Russia corporate loans, billion RUB"
+          "series_name": "Russia corporate loans, billion RUB",
+          "group_code": "ru_credit_money",
+          "subgroup_code": "credit",
+          "description": "Corporate loans, a proxy for the credit cycle."
         }
       ],
       "metadata": {
@@ -1085,19 +1189,31 @@
       "series": [
         {
           "series_code": "CBR:OFZ:ZCYC:1Y",
-          "series_name": "CBR OFZ zero-coupon yield curve, 1Y"
+          "series_name": "CBR OFZ zero-coupon yield curve, 1Y",
+          "group_code": "ru_rates",
+          "subgroup_code": "ofz_curve",
+          "description": "Short end of the OFZ curve, reflecting Bank of Russia rate expectations and ruble yields."
         },
         {
           "series_code": "CBR:OFZ:ZCYC:3Y",
-          "series_name": "CBR OFZ zero-coupon yield curve, 3Y"
+          "series_name": "CBR OFZ zero-coupon yield curve, 3Y",
+          "group_code": "ru_rates",
+          "subgroup_code": "ofz_curve",
+          "description": "Middle segment of the OFZ curve, reflecting monetary policy expectations."
         },
         {
           "series_code": "CBR:OFZ:ZCYC:5Y",
-          "series_name": "CBR OFZ zero-coupon yield curve, 5Y"
+          "series_name": "CBR OFZ zero-coupon yield curve, 5Y",
+          "group_code": "ru_rates",
+          "subgroup_code": "ofz_curve",
+          "description": "Medium-term ruble yield from the OFZ zero-coupon curve."
         },
         {
           "series_code": "CBR:OFZ:ZCYC:10Y",
-          "series_name": "CBR OFZ zero-coupon yield curve, 10Y"
+          "series_name": "CBR OFZ zero-coupon yield curve, 10Y",
+          "group_code": "ru_rates",
+          "subgroup_code": "ofz_curve",
+          "description": "Long end of the OFZ curve, reflecting risk premium and long-term expectations."
         }
       ],
       "metadata": {
@@ -1126,7 +1242,10 @@
       "series": [
         {
           "series_code": "RU_CPI_MOM",
-          "series_name": "Russia CPI inflation, month-over-month, percent"
+          "series_name": "Russia CPI inflation, month-over-month, percent",
+          "group_code": "ru_macro",
+          "subgroup_code": "inflation",
+          "description": "Monthly inflation, affecting rate expectations and the real ruble yield."
         }
       ],
       "metadata": {
@@ -1160,7 +1279,10 @@
       "series": [
         {
           "series_code": "RU_CPI_MOM",
-          "series_name": "Russia CPI inflation, month-over-month, percent"
+          "series_name": "Russia CPI inflation, month-over-month, percent",
+          "group_code": "ru_macro",
+          "subgroup_code": "inflation",
+          "description": "Monthly inflation, affecting rate expectations and the real ruble yield."
         }
       ],
       "metadata": {
@@ -1184,7 +1306,10 @@
       "series": [
         {
           "series_code": "RU_CPI_YOY",
-          "series_name": "Russia CPI inflation, year-over-year, percent"
+          "series_name": "Russia CPI inflation, year-over-year, percent",
+          "group_code": "ru_macro",
+          "subgroup_code": "inflation",
+          "description": "Annual inflation, a fundamental macroeconomic indicator."
         }
       ],
       "metadata": {
@@ -1211,7 +1336,10 @@
       "series": [
         {
           "series_code": "RU_INDUSTRIAL_PRODUCTION",
-          "series_name": "Russia industrial production index, percent of corresponding month previous year"
+          "series_name": "Russia industrial production index, percent of corresponding month previous year",
+          "group_code": "ru_macro",
+          "subgroup_code": "real_activity",
+          "description": "Industrial production, an indicator of domestic economic activity."
         }
       ],
       "metadata": {
@@ -1239,7 +1367,10 @@
       "series": [
         {
           "series_code": "RU_INDUSTRIAL_PRODUCTION",
-          "series_name": "Russia industrial production index, percent of corresponding month previous year"
+          "series_name": "Russia industrial production index, percent of corresponding month previous year",
+          "group_code": "ru_macro",
+          "subgroup_code": "real_activity",
+          "description": "Industrial production, an indicator of domestic economic activity."
         }
       ],
       "metadata": {
@@ -1377,11 +1508,17 @@
       "series": [
         {
           "series_code": "RU_FISCAL_OILGAS_REVENUE",
-          "series_name": "Russia federal budget oil and gas revenues, billion RUB"
+          "series_name": "Russia federal budget oil and gas revenues, billion RUB",
+          "group_code": "ru_fiscal",
+          "subgroup_code": "oilgas_revenue",
+          "description": "Federal oil and gas budget revenues, linking oil prices, the budget, and FX operations."
         },
         {
           "series_code": "RU_FISCAL_FX_OPERATION_AMOUNT",
-          "series_name": "Russia Minfin FX and gold purchase/sale operation amount, billion RUB"
+          "series_name": "Russia Minfin FX and gold purchase/sale operation amount, billion RUB",
+          "group_code": "ru_fiscal",
+          "subgroup_code": "fx_operations",
+          "description": "Finance Ministry and Bank of Russia FX and gold operations, a direct FX demand and supply factor."
         }
       ],
       "metadata": {
@@ -1404,143 +1541,248 @@
       "series": [
         {
           "series_code": "RU_TAX_RU_BUSINESS_DAY",
-          "series_name": "Russia tax calendar is RU business day"
+          "series_name": "Russia tax calendar is RU business day",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "business_day",
+          "description": "Russian business day dummy, used for calendar alignment and lag construction."
         },
         {
           "series_code": "RU_TAX_ANY_DUE_DUMMY",
-          "series_name": "Russia tax calendar any tax due dummy"
+          "series_name": "Russia tax calendar any tax due dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "any_tax_due",
+          "description": "Dummy for any tax payment due on date t."
         },
         {
           "series_code": "RU_TAX_DUE_COUNT",
-          "series_name": "Russia tax calendar tax due count"
+          "series_name": "Russia tax calendar tax due count",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "tax_due_intensity",
+          "description": "Number of tax payments due on the date, measuring tax pressure intensity."
         },
         {
           "series_code": "RU_TAX_ANY_WINDOW_T_MINUS_3_TO_T",
-          "series_name": "Russia tax calendar any tax due window t-3 to t"
+          "series_name": "Russia tax calendar any tax due window t-3 to t",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "any_tax_window",
+          "description": "Window from t-3 to t before any tax payment."
         },
         {
           "series_code": "RU_TAX_WEEK_DUMMY",
-          "series_name": "Russia tax calendar tax week dummy"
+          "series_name": "Russia tax calendar tax week dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "tax_week",
+          "description": "Tax week dummy, a broad calendar factor for ruble demand."
         },
         {
           "series_code": "RU_TAX_ANY_T_MINUS_3",
-          "series_name": "Russia tax calendar any tax t-3 dummy"
+          "series_name": "Russia tax calendar any tax t-3 dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "any_tax_window",
+          "description": "Three business days before any tax payment."
         },
         {
           "series_code": "RU_TAX_ANY_T_MINUS_2",
-          "series_name": "Russia tax calendar any tax t-2 dummy"
+          "series_name": "Russia tax calendar any tax t-2 dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "any_tax_window",
+          "description": "Two business days before any tax payment."
         },
         {
           "series_code": "RU_TAX_ANY_T_MINUS_1",
-          "series_name": "Russia tax calendar any tax t-1 dummy"
+          "series_name": "Russia tax calendar any tax t-1 dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "any_tax_window",
+          "description": "One business day before any tax payment."
         },
         {
           "series_code": "RU_TAX_ANY_T0",
-          "series_name": "Russia tax calendar any tax t0 dummy"
+          "series_name": "Russia tax calendar any tax t0 dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "any_tax_window",
+          "description": "Any tax payment on date t."
         },
         {
           "series_code": "RU_TAX_VAT_DUE_DUMMY",
-          "series_name": "Russia tax calendar VAT due dummy"
+          "series_name": "Russia tax calendar VAT due dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "vat",
+          "description": "VAT payment due date dummy."
         },
         {
           "series_code": "RU_TAX_VAT_T_MINUS_3",
-          "series_name": "Russia tax calendar VAT t-3 dummy"
+          "series_name": "Russia tax calendar VAT t-3 dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "vat_window",
+          "description": "Three business days before VAT payment."
         },
         {
           "series_code": "RU_TAX_VAT_T_MINUS_2",
-          "series_name": "Russia tax calendar VAT t-2 dummy"
+          "series_name": "Russia tax calendar VAT t-2 dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "vat_window",
+          "description": "Two business days before VAT payment."
         },
         {
           "series_code": "RU_TAX_VAT_T_MINUS_1",
-          "series_name": "Russia tax calendar VAT t-1 dummy"
+          "series_name": "Russia tax calendar VAT t-1 dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "vat_window",
+          "description": "One business day before VAT payment."
         },
         {
           "series_code": "RU_TAX_VAT_T0",
-          "series_name": "Russia tax calendar VAT t0 dummy"
+          "series_name": "Russia tax calendar VAT t0 dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "vat_window",
+          "description": "VAT payment on date t."
         },
         {
           "series_code": "RU_TAX_VAT_WINDOW_T_MINUS_3_TO_T",
-          "series_name": "Russia tax calendar VAT window t-3 to t"
+          "series_name": "Russia tax calendar VAT window t-3 to t",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "vat_window",
+          "description": "Window from t-3 to t before VAT payment."
         },
         {
           "series_code": "RU_TAX_PROFIT_DUE_DUMMY",
-          "series_name": "Russia tax calendar profit tax due dummy"
+          "series_name": "Russia tax calendar profit tax due dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "profit_tax",
+          "description": "Profit tax payment due date dummy."
         },
         {
           "series_code": "RU_TAX_PROFIT_T_MINUS_3",
-          "series_name": "Russia tax calendar profit tax t-3 dummy"
+          "series_name": "Russia tax calendar profit tax t-3 dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "profit_tax_window",
+          "description": "Three business days before profit tax payment."
         },
         {
           "series_code": "RU_TAX_PROFIT_T_MINUS_2",
-          "series_name": "Russia tax calendar profit tax t-2 dummy"
+          "series_name": "Russia tax calendar profit tax t-2 dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "profit_tax_window",
+          "description": "Two business days before profit tax payment."
         },
         {
           "series_code": "RU_TAX_PROFIT_T_MINUS_1",
-          "series_name": "Russia tax calendar profit tax t-1 dummy"
+          "series_name": "Russia tax calendar profit tax t-1 dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "profit_tax_window",
+          "description": "One business day before profit tax payment."
         },
         {
           "series_code": "RU_TAX_PROFIT_T0",
-          "series_name": "Russia tax calendar profit tax t0 dummy"
+          "series_name": "Russia tax calendar profit tax t0 dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "profit_tax_window",
+          "description": "Profit tax payment on date t."
         },
         {
           "series_code": "RU_TAX_PROFIT_WINDOW_T_MINUS_3_TO_T",
-          "series_name": "Russia tax calendar profit tax window t-3 to t"
+          "series_name": "Russia tax calendar profit tax window t-3 to t",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "profit_tax_window",
+          "description": "Window from t-3 to t before profit tax payment."
         },
         {
           "series_code": "RU_TAX_NDPI_DUE_DUMMY",
-          "series_name": "Russia tax calendar NDPI due dummy"
+          "series_name": "Russia tax calendar NDPI due dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "ndpi",
+          "description": "Mineral extraction tax payment due date dummy."
         },
         {
           "series_code": "RU_TAX_NDPI_T_MINUS_3",
-          "series_name": "Russia tax calendar NDPI t-3 dummy"
+          "series_name": "Russia tax calendar NDPI t-3 dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "ndpi_window",
+          "description": "Three business days before mineral extraction tax payment."
         },
         {
           "series_code": "RU_TAX_NDPI_T_MINUS_2",
-          "series_name": "Russia tax calendar NDPI t-2 dummy"
+          "series_name": "Russia tax calendar NDPI t-2 dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "ndpi_window",
+          "description": "Two business days before mineral extraction tax payment."
         },
         {
           "series_code": "RU_TAX_NDPI_T_MINUS_1",
-          "series_name": "Russia tax calendar NDPI t-1 dummy"
+          "series_name": "Russia tax calendar NDPI t-1 dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "ndpi_window",
+          "description": "One business day before mineral extraction tax payment."
         },
         {
           "series_code": "RU_TAX_NDPI_T0",
-          "series_name": "Russia tax calendar NDPI t0 dummy"
+          "series_name": "Russia tax calendar NDPI t0 dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "ndpi_window",
+          "description": "Mineral extraction tax payment on date t."
         },
         {
           "series_code": "RU_TAX_NDPI_WINDOW_T_MINUS_3_TO_T",
-          "series_name": "Russia tax calendar NDPI window t-3 to t"
+          "series_name": "Russia tax calendar NDPI window t-3 to t",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "ndpi_window",
+          "description": "Window from t-3 to t before mineral extraction tax payment."
         },
         {
           "series_code": "RU_TAX_QTR_PAYMENT_DUE_DUMMY",
-          "series_name": "Russia tax calendar quarter tax payment due dummy"
+          "series_name": "Russia tax calendar quarter tax payment due dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "quarter_tax_payment",
+          "description": "Quarterly tax payment due date dummy."
         },
         {
           "series_code": "RU_TAX_QTR_PAYMENT_T_MINUS_3",
-          "series_name": "Russia tax calendar quarter tax payment t-3 dummy"
+          "series_name": "Russia tax calendar quarter tax payment t-3 dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "quarter_tax_payment_window",
+          "description": "Three business days before quarterly tax payment."
         },
         {
           "series_code": "RU_TAX_QTR_PAYMENT_T_MINUS_2",
-          "series_name": "Russia tax calendar quarter tax payment t-2 dummy"
+          "series_name": "Russia tax calendar quarter tax payment t-2 dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "quarter_tax_payment_window",
+          "description": "Two business days before quarterly tax payment."
         },
         {
           "series_code": "RU_TAX_QTR_PAYMENT_T_MINUS_1",
-          "series_name": "Russia tax calendar quarter tax payment t-1 dummy"
+          "series_name": "Russia tax calendar quarter tax payment t-1 dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "quarter_tax_payment_window",
+          "description": "One business day before quarterly tax payment."
         },
         {
           "series_code": "RU_TAX_QTR_PAYMENT_T0",
-          "series_name": "Russia tax calendar quarter tax payment t0 dummy"
+          "series_name": "Russia tax calendar quarter tax payment t0 dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "quarter_tax_payment_window",
+          "description": "Quarterly tax payment on date t."
         },
         {
           "series_code": "RU_TAX_QTR_PAYMENT_WINDOW_T_MINUS_3_TO_T",
-          "series_name": "Russia tax calendar quarter tax payment window t-3 to t"
+          "series_name": "Russia tax calendar quarter tax payment window t-3 to t",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "quarter_tax_payment_window",
+          "description": "Window from t-3 to t before quarterly tax payments."
         },
         {
           "series_code": "RU_TAX_QTR_END_LAST_BUSINESS_DAY",
-          "series_name": "Russia tax calendar quarter end last business day dummy"
+          "series_name": "Russia tax calendar quarter end last business day dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "quarter_end",
+          "description": "Last business day of the quarter, capturing possible balancing or liquidity effects."
         },
         {
           "series_code": "RU_TAX_QTR_END_WINDOW_T_MINUS_3_TO_T",
-          "series_name": "Russia tax calendar quarter end window t-3 to t"
+          "series_name": "Russia tax calendar quarter end window t-3 to t",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "quarter_end_window",
+          "description": "Window from t-3 to t before quarter end."
         }
       ],
       "metadata": {
