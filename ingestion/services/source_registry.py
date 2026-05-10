@@ -8,7 +8,7 @@ from ingestion.adapters.cbr_secinfo import CbrSecInfoAdapter
 from ingestion.adapters.cbr_trade_balance import CbrTradeBalanceAdapter
 from ingestion.adapters.eia import EiaAdapter
 from ingestion.adapters.exchangerates import ExchangeRatesAdapter
-from ingestion.adapters.fred import FredAdapter, FredSofrAdapter
+from ingestion.adapters.fred import FredAdapter, FredObservationsAdapter, FredSofrAdapter
 from ingestion.adapters.manual_csv import ManualCsvAdapter
 from ingestion.adapters.minfin_oilgas import MinfinOilGasAdapter
 from ingestion.adapters.tradingview import TradingViewAdapter
@@ -35,6 +35,7 @@ class SourceRegistry:
         self.register_adapter(MoexAdapter.name, MoexAdapter)
         self.register_adapter(EiaAdapter.name, EiaAdapter)
         self.register_adapter(FredAdapter.name, FredAdapter)
+        self.register_adapter(FredObservationsAdapter.name, FredObservationsAdapter)
         self.register_adapter(FredSofrAdapter.name, FredSofrAdapter)
         self.register_adapter(ExchangeRatesAdapter.name, ExchangeRatesAdapter)
         self.register_adapter(YahooAdapter.name, YahooAdapter)

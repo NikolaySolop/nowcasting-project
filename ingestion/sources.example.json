@@ -37,14 +37,15 @@
       "source_type": "api",
       "adapter_name": "fred_sofr",
       "enabled": true,
-      "schedule_cron": "0 14,15 * * 1-5",
+      "schedule_cron": "0 */2 * * 1-5",
       "scrape": {
         "url": "https://api.stlouisfed.org/fred/series/observations",
         "parser": "text",
         "series_code": "FRED:SOFR",
         "start_date": "2015-01-01",
         "extra": {
-          "fred_series_id": "SOFR"
+          "fred_series_id": "SOFR",
+          "revision_check_observations": 5
         }
       },
       "series": [
@@ -63,16 +64,17 @@
       "source_code": "FRED_EFFR",
       "source_name": "FRED Effective Federal Funds Rate",
       "source_type": "api",
-      "adapter_name": "fred",
+      "adapter_name": "fred_observations",
       "enabled": true,
-      "schedule_cron": "0 14 * * 1-5",
+      "schedule_cron": "0 */2 * * 1-5",
       "scrape": {
         "url": "https://api.stlouisfed.org/fred/series/observations",
         "parser": "text",
         "series_code": "FRED:EFFR",
-        "start_date": "2000-07-03",
+        "start_date": "2015-01-01",
         "extra": {
-          "fred_series_id": "EFFR"
+          "fred_series_id": "EFFR",
+          "revision_check_observations": 5
         }
       },
       "series": [

@@ -213,8 +213,8 @@ class FredAdapter(BaseAdapter):
         raise AdapterError(f"FRED API error for {fred_series_id}: {code}: {message}")
 
 
-class FredSofrAdapter(FredAdapter):
-    name = "fred_sofr"
+class FredObservationsAdapter(FredAdapter):
+    name = "fred_observations"
 
     async def fetch(self, context: FetchContext) -> FetchResult:
         url, response, payload, rows, fred_series_id = await self._fetch_rows(context)
@@ -266,3 +266,7 @@ class FredSofrAdapter(FredAdapter):
             tzinfo=self.new_york_tz,
         )
         return published_in_new_york.astimezone(self.dubai_tz)
+
+
+class FredSofrAdapter(FredObservationsAdapter):
+    name = "fred_sofr"

@@ -85,6 +85,7 @@ class IngestionService:
         table_loaded_count, table_duplicate_count = await self._store_table_observations(
             source,
             fetch_result.table_observations,
+            loaded_at=fetch_result.loaded_at,
             commit=False,
         )
         loaded_count += table_loaded_count
@@ -108,6 +109,7 @@ class IngestionService:
         source: SourceDefinition,
         observations: list[ObservationIn],
         *,
+        loaded_at: datetime,
         commit: bool,
     ) -> tuple[int, int]:
         if not observations:
@@ -119,25 +121,43 @@ class IngestionService:
             source,
             {observation.series_code for observation in valid_observations},
         )
-        existing_keys = await self._existing_table_observation_keys(storage_source.id, series_by_code, valid_observations)
+        existing_rows = await self._existing_table_observation_rows(storage_source.id, series_by_code, valid_observations)
+        latest_by_reference: dict[tuple[object, ...], tuple[datetime, Decimal]] = {}
+        published_at_by_reference: dict[tuple[object, ...], set[datetime]] = {}
+        for series_id, reference_start, reference_end, published_at, value in existing_rows:
+            reference_key = (series_id, reference_start, reference_end)
+            value = Decimal(value)
+            latest = latest_by_reference.get(reference_key)
+            if latest is None or published_at > latest[0]:
+                latest_by_reference[reference_key] = (published_at, value)
+            published_at_by_reference.setdefault(reference_key, set()).add(published_at)
 
         loaded_count = 0
         new_entities: list[Observation] = []
         for observation in valid_observations:
             storage_series = series_by_code[observation.series_code]
-            key = self._table_observation_storage_key(storage_series.id, observation)
-            if key in existing_keys:
+            reference_key = (storage_series.id, observation.reference_start, observation.reference_end)
+            value = Decimal(observation.value)
+            latest = latest_by_reference.get(reference_key)
+            if latest is not None and latest[1] == value:
                 duplicate_count += 1
                 continue
-            existing_keys.add(key)
+            published_at = observation.published_at
+            if latest is not None:
+                published_at = self._revision_published_at(
+                    loaded_at,
+                    published_at_by_reference.get(reference_key, set()),
+                )
+            published_at_by_reference.setdefault(reference_key, set()).add(published_at)
+            latest_by_reference[reference_key] = (published_at, value)
             new_entities.append(
                 Observation(
                     series_id=storage_series.id,
                     source_id=storage_source.id,
                     reference_start=observation.reference_start,
                     reference_end=observation.reference_end,
-                    value=observation.value,
-                    published_at=observation.published_at,
+                    value=value,
+                    published_at=published_at,
                 )
             )
             loaded_count += 1
@@ -331,8 +351,14 @@ class IngestionService:
             await self.session.flush()
 
     async def _latest_observed_at_by_series(self, source: SourceDefinition) -> dict[str, datetime]:
-        if source.adapter_name == "fred_sofr":
-            return await self._latest_reference_start_by_series(source)
+        if source.adapter_name in {"fred_observations", "fred_sofr"}:
+            revision_check_observations = int(
+                (source.scrape.extra if source.scrape else {}).get("revision_check_observations", 5)
+            )
+            return await self._latest_reference_start_by_series(
+                source,
+                revision_check_observations=revision_check_observations,
+            )
 
         use_global = bool((source.scrape.extra if source.scrape else {}).get("global_series_latest"))
         if use_global:
@@ -357,10 +383,24 @@ class IngestionService:
             existing.setdefault(series.series_code, bootstrap_latest)
         return existing
 
-    async def _latest_reference_start_by_series(self, source: SourceDefinition) -> dict[str, datetime]:
+    async def _latest_reference_start_by_series(
+        self,
+        source: SourceDefinition,
+        *,
+        revision_check_observations: int = 0,
+    ) -> dict[str, datetime]:
         storage_source = await self.sources.get_by_source_code(source.source_code)
         if storage_source is None:
             existing: dict[str, datetime] = {}
+        elif revision_check_observations > 0:
+            revision_starts = await self.table_observations.revision_check_start_by_series(
+                storage_source.id,
+                revision_check_observations,
+            )
+            existing = {
+                series_code: reference_start - timedelta(days=1)
+                for series_code, reference_start in revision_starts.items()
+            }
         else:
             existing = await self.table_observations.latest_reference_start_by_series(storage_source.id)
 
@@ -435,14 +475,14 @@ class IngestionService:
             observation.value_text,
         )
 
-    async def _existing_table_observation_keys(
+    async def _existing_table_observation_rows(
         self,
         source_id,
         series_by_code: dict[str, object],
         observations: list[ObservationIn],
-    ) -> set[tuple[object, ...]]:
+    ) -> list[tuple[object, ...]]:
         if not observations:
-            return set()
+            return []
 
         series_ids = {series_by_code[observation.series_code].id for observation in observations}
         min_reference_start = min(observation.reference_start for observation in observations)
@@ -459,27 +499,17 @@ class IngestionService:
             Observation.reference_start >= min_reference_start,
             Observation.reference_start <= max_reference_start,
         )
-        rows = (await self.session.execute(stmt)).all()
-        return {
-            (
-                series_id,
-                reference_start,
-                reference_end,
-                published_at,
-                Decimal(value),
-            )
-            for series_id, reference_start, reference_end, published_at, value in rows
-        }
+        return list((await self.session.execute(stmt)).all())
 
     @staticmethod
-    def _table_observation_storage_key(series_id, observation: ObservationIn) -> tuple[object, ...]:
-        return (
-            series_id,
-            observation.reference_start,
-            observation.reference_end,
-            observation.published_at,
-            Decimal(observation.value),
-        )
+    def _revision_published_at(loaded_at: datetime, existing_published_at: set[datetime]) -> datetime:
+        if loaded_at.tzinfo is None:
+            loaded_at = loaded_at.replace(tzinfo=timezone.utc)
+
+        published_at = loaded_at
+        while published_at in existing_published_at:
+            published_at += timedelta(microseconds=1)
+        return published_at
 
     @staticmethod
     def _to_storage_source_type(source_type: SourceKind) -> SourceType:
