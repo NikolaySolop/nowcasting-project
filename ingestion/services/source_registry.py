@@ -10,6 +10,7 @@ from ingestion.adapters.eia import EiaAdapter
 from ingestion.adapters.exchangerates import ExchangeRatesAdapter
 from ingestion.adapters.fred import FredAdapter
 from ingestion.adapters.manual_csv import ManualCsvAdapter
+from ingestion.adapters.minfin_oilgas import MinfinOilGasAdapter
 from ingestion.adapters.tradingview import TradingViewAdapter
 from ingestion.adapters.moex import MoexAdapter
 from ingestion.adapters.profinance import ProFinanceAdapter
@@ -38,6 +39,7 @@ class SourceRegistry:
         self.register_adapter(ExchangeRatesAdapter.name, ExchangeRatesAdapter)
         self.register_adapter(YahooAdapter.name, YahooAdapter)
         self.register_adapter(ManualCsvAdapter.name, ManualCsvAdapter)
+        self.register_adapter(MinfinOilGasAdapter.name, MinfinOilGasAdapter)
         self.register_adapter(RosstatIndustrialAdapter.name, RosstatIndustrialAdapter)
         self.register_adapter(RosstatRetailSalesAdapter.name, RosstatRetailSalesAdapter)
         self.register_adapter(RuTaxDummyCalendarAdapter.name, RuTaxDummyCalendarAdapter)
@@ -72,4 +74,6 @@ class SourceRegistry:
         payload = json.loads(path.read_text(encoding="utf-8"))
         raw_sources = payload if isinstance(payload, list) else payload.get("sources", [])
         for raw_source in raw_sources:
+            if isinstance(raw_source, dict) and "_comment" in raw_source and "source_code" not in raw_source:
+                continue
             self.register_source(SourceDefinition.model_validate(raw_source))
