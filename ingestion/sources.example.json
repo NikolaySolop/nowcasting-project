@@ -1,6 +1,9 @@
 {
   "sources": [
     {
+      "_comment": "Nowcast group: template and disabled examples"
+    },
+    {
       "source_code": "EXAMPLE_WEB_MACRO",
       "source_name": "Example web macro table",
       "source_type": "web",
@@ -24,6 +27,9 @@
           "series_name": "Example Series"
         }
       ]
+    },
+    {
+      "_comment": "Nowcast group: global funding, rates, and risk sentiment"
     },
     {
       "source_code": "FRED_SOFR",
@@ -70,6 +76,159 @@
           "series_name": "Effective Federal Funds Rate, percent"
         }
       ]
+    },
+    {
+      "source_code": "TRADINGVIEW_VIX",
+      "source_name": "TradingView VIX 15m",
+      "source_type": "web",
+      "adapter_name": "tradingview",
+      "enabled": true,
+      "schedule_cron": "*/15 * * * *",
+      "scrape": {
+        "url": "https://www.tradingview.com/symbols/TVC-VIX/",
+        "parser": "text",
+        "series_code": "TVC:VIX",
+        "extra": {
+          "ticker": "TVC:VIX",
+          "interval_minutes": 15,
+          "history_interval": "1d",
+          "backfill_enabled": true
+        },
+        "start_date": "01.01.2015"
+      },
+      "series": [
+        {
+          "series_code": "TVC:VIX",
+          "series_name": "CBOE Volatility Index (VIX)"
+        }
+      ]
+    },
+    {
+      "source_code": "TRADINGVIEW_USDEUR",
+      "source_name": "TradingView USD/EUR 15m",
+      "source_type": "web",
+      "adapter_name": "tradingview",
+      "enabled": true,
+      "schedule_cron": "*/15 * * * *",
+      "scrape": {
+        "url": "https://www.tradingview.com/symbols/USDEUR/",
+        "parser": "text",
+        "series_code": "FX_IDC:USDEUR",
+        "extra": {
+          "ticker": "FX_IDC:USDEUR",
+          "interval_minutes": 15,
+          "history_interval": "1d",
+          "backfill_enabled": true
+        },
+        "start_date": "01.01.2015"
+      },
+      "series": [
+        {
+          "series_code": "FX_IDC:USDEUR",
+          "series_name": "U.S. Dollar / Euro"
+        }
+      ]
+    },
+    {
+      "source_code": "TRADINGVIEW_DXY",
+      "source_name": "TradingView DXY 15m",
+      "source_type": "web",
+      "adapter_name": "tradingview",
+      "enabled": true,
+      "schedule_cron": "*/15 * * * *",
+      "scrape": {
+        "url": "https://www.tradingview.com/symbols/TVC-DXY/",
+        "parser": "text",
+        "series_code": "TVC:DXY",
+        "extra": {
+          "ticker": "TVC:DXY",
+          "interval_minutes": 15,
+          "history_interval": "1d",
+          "backfill_enabled": true
+        },
+        "start_date": "01.01.2015"
+      },
+      "series": [
+        {
+          "series_code": "TVC:DXY",
+          "series_name": "U.S. Dollar Index (DXY)"
+        }
+      ]
+    },
+    {
+      "source_code": "TRADINGVIEW_US02Y",
+      "source_name": "TradingView UST 2Y Yield 15m",
+      "source_type": "web",
+      "adapter_name": "tradingview",
+      "enabled": true,
+      "schedule_cron": "*/15 * * * *",
+      "scrape": {
+        "url": "https://www.tradingview.com/symbols/TVC-US02Y/",
+        "parser": "text",
+        "series_code": "TVC:US02Y",
+        "extra": {
+          "ticker": "TVC:US02Y",
+          "interval_minutes": 15,
+          "backfill_enabled": false
+        }
+      },
+      "series": [
+        {
+          "series_code": "TVC:US02Y",
+          "series_name": "U.S. Treasury 2Y Yield"
+        }
+      ]
+    },
+    {
+      "source_code": "TRADINGVIEW_US10Y",
+      "source_name": "TradingView UST 10Y Yield 15m",
+      "source_type": "web",
+      "adapter_name": "tradingview",
+      "enabled": true,
+      "schedule_cron": "*/15 * * * *",
+      "scrape": {
+        "url": "https://www.tradingview.com/symbols/TVC-US10Y/",
+        "parser": "text",
+        "series_code": "TVC:US10Y",
+        "extra": {
+          "ticker": "TVC:US10Y",
+          "interval_minutes": 15,
+          "backfill_enabled": false
+        }
+      },
+      "series": [
+        {
+          "series_code": "TVC:US10Y",
+          "series_name": "U.S. Treasury 10Y Yield"
+        }
+      ]
+    },
+    {
+      "source_code": "TRADINGVIEW_US10Y_US02Y_SPREAD",
+      "source_name": "TradingView UST 10Y-2Y Spread 15m",
+      "source_type": "web",
+      "adapter_name": "tradingview",
+      "enabled": true,
+      "schedule_cron": "*/15 * * * *",
+      "scrape": {
+        "url": "https://www.tradingview.com/chart/?symbol=TVC:US10Y-US02Y",
+        "parser": "text",
+        "series_code": "TVC:US10Y-US02Y",
+        "extra": {
+          "ticker": "TVC:US10Y-US02Y",
+          "interval_minutes": 15,
+          "backfill_enabled": false
+        }
+      },
+      "series": [
+        {
+          "series_code": "TVC:US10Y-US02Y",
+          "series_name": "U.S. Treasury 10Y-2Y Yield Spread"
+        }
+      ]
+    },
+    {
+      "_comment": "Nowcast group: global energy markets and oil balance"
     },
     {
       "source_code": "EIA_ECONOMICS_USCOSC",
@@ -176,84 +335,6 @@
       ]
     },
     {
-      "source_code": "TRADINGVIEW_VIX",
-      "source_name": "TradingView VIX 15m",
-      "source_type": "web",
-      "adapter_name": "tradingview",
-      "enabled": true,
-      "schedule_cron": "*/15 * * * *",
-      "scrape": {
-        "url": "https://www.tradingview.com/symbols/TVC-VIX/",
-        "parser": "text",
-        "series_code": "TVC:VIX",
-        "extra": {
-          "ticker": "TVC:VIX",
-          "interval_minutes": 15,
-          "history_interval": "1d",
-          "backfill_enabled": true
-        },
-        "start_date": "01.01.2015"
-      },
-      "series": [
-        {
-          "series_code": "TVC:VIX",
-          "series_name": "CBOE Volatility Index (VIX)"
-        }
-      ]
-    },
-    {
-      "source_code": "TRADINGVIEW_USDEUR",
-      "source_name": "TradingView USD/EUR 15m",
-      "source_type": "web",
-      "adapter_name": "tradingview",
-      "enabled": true,
-      "schedule_cron": "*/15 * * * *",
-      "scrape": {
-        "url": "https://www.tradingview.com/symbols/USDEUR/",
-        "parser": "text",
-        "series_code": "FX_IDC:USDEUR",
-        "extra": {
-          "ticker": "FX_IDC:USDEUR",
-          "interval_minutes": 15,
-          "history_interval": "1d",
-          "backfill_enabled": true
-        },
-        "start_date": "01.01.2015"
-      },
-      "series": [
-        {
-          "series_code": "FX_IDC:USDEUR",
-          "series_name": "U.S. Dollar / Euro"
-        }
-      ]
-    },
-    {
-      "source_code": "TRADINGVIEW_DXY",
-      "source_name": "TradingView DXY 15m",
-      "source_type": "web",
-      "adapter_name": "tradingview",
-      "enabled": true,
-      "schedule_cron": "*/15 * * * *",
-      "scrape": {
-        "url": "https://www.tradingview.com/symbols/TVC-DXY/",
-        "parser": "text",
-        "series_code": "TVC:DXY",
-        "extra": {
-          "ticker": "TVC:DXY",
-          "interval_minutes": 15,
-          "history_interval": "1d",
-          "backfill_enabled": true
-        },
-        "start_date": "01.01.2015"
-      },
-      "series": [
-        {
-          "series_code": "TVC:DXY",
-          "series_name": "U.S. Dollar Index (DXY)"
-        }
-      ]
-    },
-    {
       "source_code": "TRADINGVIEW_BRENT_CRUDE_FUTURES",
       "source_name": "TradingView Brent Crude Futures 15m",
       "source_type": "web",
@@ -276,78 +357,6 @@
         {
           "series_code": "ICEEUR:BRN1!",
           "series_name": "Brent Crude Futures"
-        }
-      ]
-    },
-    {
-      "source_code": "TRADINGVIEW_US02Y",
-      "source_name": "TradingView UST 2Y Yield 15m",
-      "source_type": "web",
-      "adapter_name": "tradingview",
-      "enabled": true,
-      "schedule_cron": "*/15 * * * *",
-      "scrape": {
-        "url": "https://www.tradingview.com/symbols/TVC-US02Y/",
-        "parser": "text",
-        "series_code": "TVC:US02Y",
-        "extra": {
-          "ticker": "TVC:US02Y",
-          "interval_minutes": 15,
-          "backfill_enabled": false
-        }
-      },
-      "series": [
-        {
-          "series_code": "TVC:US02Y",
-          "series_name": "U.S. Treasury 2Y Yield"
-        }
-      ]
-    },
-    {
-      "source_code": "TRADINGVIEW_US10Y",
-      "source_name": "TradingView UST 10Y Yield 15m",
-      "source_type": "web",
-      "adapter_name": "tradingview",
-      "enabled": true,
-      "schedule_cron": "*/15 * * * *",
-      "scrape": {
-        "url": "https://www.tradingview.com/symbols/TVC-US10Y/",
-        "parser": "text",
-        "series_code": "TVC:US10Y",
-        "extra": {
-          "ticker": "TVC:US10Y",
-          "interval_minutes": 15,
-          "backfill_enabled": false
-        }
-      },
-      "series": [
-        {
-          "series_code": "TVC:US10Y",
-          "series_name": "U.S. Treasury 10Y Yield"
-        }
-      ]
-    },
-    {
-      "source_code": "TRADINGVIEW_US10Y_US02Y_SPREAD",
-      "source_name": "TradingView UST 10Y-2Y Spread 15m",
-      "source_type": "web",
-      "adapter_name": "tradingview",
-      "enabled": true,
-      "schedule_cron": "*/15 * * * *",
-      "scrape": {
-        "url": "https://www.tradingview.com/chart/?symbol=TVC:US10Y-US02Y",
-        "parser": "text",
-        "series_code": "TVC:US10Y-US02Y",
-        "extra": {
-          "ticker": "TVC:US10Y-US02Y",
-          "interval_minutes": 15,
-          "backfill_enabled": false
-        }
-      },
-      "series": [
-        {
-          "series_code": "TVC:US10Y-US02Y",
-          "series_name": "U.S. Treasury 10Y-2Y Yield Spread"
         }
       ]
     },
@@ -587,6 +596,9 @@
       }
     },
     {
+      "_comment": "Nowcast group: Russia FX and domestic market prices"
+    },
+    {
       "source_code": "TRADINGVIEW_USDRUB",
       "source_name": "TradingView USD/RUB 15m",
       "source_type": "web",
@@ -641,6 +653,171 @@
       "metadata": {
         "note": "Initial run backfills official CBR daily history from XML_dynamic.asp. The 15-minute schedule checks whether CBR has published a new official daily rate; it is not an intraday market quote."
       }
+    },
+    {
+      "source_code": "MOEX_RUBCNY_DAILY",
+      "source_name": "MOEX CNY/RUB TOM daily history",
+      "source_type": "exchange",
+      "adapter_name": "moex",
+      "enabled": true,
+      "schedule_cron": "10 20 * * 1-5",
+      "scrape": {
+        "url": "https://iss.moex.com/iss/engines/currency/markets/selt/boards/CETS/securities/",
+        "parser": "text",
+        "series_code": "MOEX:CNYRUB_TOM",
+        "start_date": "01.01.2015",
+        "extra": {
+          "mode": "history_daily",
+          "secid": "CNYRUB_TOM"
+        }
+      },
+      "series": [
+        {
+          "series_code": "MOEX:CNYRUB_TOM",
+          "series_name": "MOEX CNY/RUB TOM, daily close"
+        }
+      ]
+    },
+    {
+      "source_code": "MOEX_RUBCNY_15M",
+      "source_name": "MOEX CNY/RUB TOM online 15m",
+      "source_type": "exchange",
+      "adapter_name": "moex",
+      "enabled": true,
+      "schedule_cron": "*/15 * * * 1-5",
+      "scrape": {
+        "url": "https://iss.moex.com/iss/engines/currency/markets/selt/boards/CETS/securities/",
+        "parser": "text",
+        "series_code": "MOEX:CNYRUB_TOM:15M",
+        "extra": {
+          "mode": "online_15m",
+          "secid": "CNYRUB_TOM",
+          "interval_minutes": 15,
+          "initial_lookback_days": 5,
+          "max_latest_age_days": 30,
+          "session_anchor_time": "09:50:00"
+        }
+      },
+      "series": [
+        {
+          "series_code": "MOEX:CNYRUB_TOM:15M",
+          "series_name": "MOEX CNY/RUB TOM, 15m close aggregated from 1m candles"
+        }
+      ],
+      "metadata": {
+        "note": "MOEX ISS does not publish native interval=15 candles; this source aggregates ISS interval=1 candles into closed 15-minute bars."
+      }
+    },
+    {
+      "source_code": "MOEX_IMOEX_DAILY",
+      "source_name": "MOEX Index daily history",
+      "source_type": "exchange",
+      "adapter_name": "moex",
+      "enabled": true,
+      "schedule_cron": "10 20 * * 1-5",
+      "scrape": {
+        "url": "https://iss.moex.com/iss/engines/stock/markets/index/boards/SNDX/securities/IMOEX",
+        "parser": "text",
+        "series_code": "MOEX:IMOEX",
+        "start_date": "01.01.2015",
+        "extra": {
+          "mode": "history_daily",
+          "secid": "IMOEX"
+        }
+      },
+      "series": [
+        {
+          "series_code": "MOEX:IMOEX",
+          "series_name": "MOEX Russia Index, daily close"
+        }
+      ]
+    },
+    {
+      "source_code": "MOEX_IMOEX_15M",
+      "source_name": "MOEX Index online 15m",
+      "source_type": "exchange",
+      "adapter_name": "moex",
+      "enabled": true,
+      "schedule_cron": "*/15 * * * 1-5",
+      "scrape": {
+        "url": "https://iss.moex.com/iss/engines/stock/markets/index/boards/SNDX/securities/IMOEX",
+        "parser": "text",
+        "series_code": "MOEX:IMOEX:15M",
+        "extra": {
+          "mode": "online_15m",
+          "secid": "IMOEX",
+          "interval_minutes": 15,
+          "initial_lookback_days": 5,
+          "max_latest_age_days": 30,
+          "session_anchor_time": "09:50:00"
+        }
+      },
+      "series": [
+        {
+          "series_code": "MOEX:IMOEX:15M",
+          "series_name": "MOEX Russia Index, 15m close aggregated from 1m candles"
+        }
+      ],
+      "metadata": {
+        "note": "MOEX ISS does not publish native interval=15 candles; this source aggregates ISS interval=1 candles into closed 15-minute bars."
+      }
+    },
+    {
+      "source_code": "MOEX_RTSI_DAILY",
+      "source_name": "RTS Index daily history",
+      "source_type": "exchange",
+      "adapter_name": "moex",
+      "enabled": true,
+      "schedule_cron": "10 20 * * 1-5",
+      "scrape": {
+        "url": "https://iss.moex.com/iss/engines/stock/markets/index/boards/SNDX/securities/RTSI",
+        "parser": "text",
+        "series_code": "MOEX:RTSI",
+        "start_date": "01.01.2015",
+        "extra": {
+          "mode": "history_daily",
+          "secid": "RTSI"
+        }
+      },
+      "series": [
+        {
+          "series_code": "MOEX:RTSI",
+          "series_name": "RTS Index, daily close"
+        }
+      ]
+    },
+    {
+      "source_code": "MOEX_RTSI_15M",
+      "source_name": "RTS Index online 15m",
+      "source_type": "exchange",
+      "adapter_name": "moex",
+      "enabled": true,
+      "schedule_cron": "*/15 * * * 1-5",
+      "scrape": {
+        "url": "https://iss.moex.com/iss/engines/stock/markets/index/boards/SNDX/securities/RTSI",
+        "parser": "text",
+        "series_code": "MOEX:RTSI:15M",
+        "extra": {
+          "mode": "online_15m",
+          "secid": "RTSI",
+          "interval_minutes": 15,
+          "initial_lookback_days": 5,
+          "max_latest_age_days": 30,
+          "session_anchor_time": "10:00:00"
+        }
+      },
+      "series": [
+        {
+          "series_code": "MOEX:RTSI:15M",
+          "series_name": "RTS Index, 15m close aggregated from 1m candles"
+        }
+      ],
+      "metadata": {
+        "note": "MOEX ISS does not publish native interval=15 candles; this source aggregates ISS interval=1 candles into closed 15-minute bars."
+      }
+    },
+    {
+      "_comment": "Nowcast group: Russia monetary policy, liquidity, credit, and OFZ curve"
     },
     {
       "source_code": "CBR_KEY_RATE",
@@ -866,168 +1043,6 @@
       }
     },
     {
-      "source_code": "MOEX_RUBCNY_DAILY",
-      "source_name": "MOEX CNY/RUB TOM daily history",
-      "source_type": "exchange",
-      "adapter_name": "moex",
-      "enabled": true,
-      "schedule_cron": "10 20 * * 1-5",
-      "scrape": {
-        "url": "https://iss.moex.com/iss/engines/currency/markets/selt/boards/CETS/securities/",
-        "parser": "text",
-        "series_code": "MOEX:CNYRUB_TOM",
-        "start_date": "01.01.2015",
-        "extra": {
-          "mode": "history_daily",
-          "secid": "CNYRUB_TOM"
-        }
-      },
-      "series": [
-        {
-          "series_code": "MOEX:CNYRUB_TOM",
-          "series_name": "MOEX CNY/RUB TOM, daily close"
-        }
-      ]
-    },
-    {
-      "source_code": "MOEX_RUBCNY_15M",
-      "source_name": "MOEX CNY/RUB TOM online 15m",
-      "source_type": "exchange",
-      "adapter_name": "moex",
-      "enabled": true,
-      "schedule_cron": "*/15 * * * 1-5",
-      "scrape": {
-        "url": "https://iss.moex.com/iss/engines/currency/markets/selt/boards/CETS/securities/",
-        "parser": "text",
-        "series_code": "MOEX:CNYRUB_TOM:15M",
-        "extra": {
-          "mode": "online_15m",
-          "secid": "CNYRUB_TOM",
-          "interval_minutes": 15,
-          "initial_lookback_days": 5,
-          "max_latest_age_days": 30,
-          "session_anchor_time": "09:50:00"
-        }
-      },
-      "series": [
-        {
-          "series_code": "MOEX:CNYRUB_TOM:15M",
-          "series_name": "MOEX CNY/RUB TOM, 15m close aggregated from 1m candles"
-        }
-      ],
-      "metadata": {
-        "note": "MOEX ISS does not publish native interval=15 candles; this source aggregates ISS interval=1 candles into closed 15-minute bars."
-      }
-    },
-    {
-      "source_code": "MOEX_IMOEX_DAILY",
-      "source_name": "MOEX Index daily history",
-      "source_type": "exchange",
-      "adapter_name": "moex",
-      "enabled": true,
-      "schedule_cron": "10 20 * * 1-5",
-      "scrape": {
-        "url": "https://iss.moex.com/iss/engines/stock/markets/index/boards/SNDX/securities/IMOEX",
-        "parser": "text",
-        "series_code": "MOEX:IMOEX",
-        "start_date": "01.01.2015",
-        "extra": {
-          "mode": "history_daily",
-          "secid": "IMOEX"
-        }
-      },
-      "series": [
-        {
-          "series_code": "MOEX:IMOEX",
-          "series_name": "MOEX Russia Index, daily close"
-        }
-      ]
-    },
-    {
-      "source_code": "MOEX_IMOEX_15M",
-      "source_name": "MOEX Index online 15m",
-      "source_type": "exchange",
-      "adapter_name": "moex",
-      "enabled": true,
-      "schedule_cron": "*/15 * * * 1-5",
-      "scrape": {
-        "url": "https://iss.moex.com/iss/engines/stock/markets/index/boards/SNDX/securities/IMOEX",
-        "parser": "text",
-        "series_code": "MOEX:IMOEX:15M",
-        "extra": {
-          "mode": "online_15m",
-          "secid": "IMOEX",
-          "interval_minutes": 15,
-          "initial_lookback_days": 5,
-          "max_latest_age_days": 30,
-          "session_anchor_time": "09:50:00"
-        }
-      },
-      "series": [
-        {
-          "series_code": "MOEX:IMOEX:15M",
-          "series_name": "MOEX Russia Index, 15m close aggregated from 1m candles"
-        }
-      ],
-      "metadata": {
-        "note": "MOEX ISS does not publish native interval=15 candles; this source aggregates ISS interval=1 candles into closed 15-minute bars."
-      }
-    },
-    {
-      "source_code": "MOEX_RTSI_DAILY",
-      "source_name": "RTS Index daily history",
-      "source_type": "exchange",
-      "adapter_name": "moex",
-      "enabled": true,
-      "schedule_cron": "10 20 * * 1-5",
-      "scrape": {
-        "url": "https://iss.moex.com/iss/engines/stock/markets/index/boards/SNDX/securities/RTSI",
-        "parser": "text",
-        "series_code": "MOEX:RTSI",
-        "start_date": "01.01.2015",
-        "extra": {
-          "mode": "history_daily",
-          "secid": "RTSI"
-        }
-      },
-      "series": [
-        {
-          "series_code": "MOEX:RTSI",
-          "series_name": "RTS Index, daily close"
-        }
-      ]
-    },
-    {
-      "source_code": "MOEX_RTSI_15M",
-      "source_name": "RTS Index online 15m",
-      "source_type": "exchange",
-      "adapter_name": "moex",
-      "enabled": true,
-      "schedule_cron": "*/15 * * * 1-5",
-      "scrape": {
-        "url": "https://iss.moex.com/iss/engines/stock/markets/index/boards/SNDX/securities/RTSI",
-        "parser": "text",
-        "series_code": "MOEX:RTSI:15M",
-        "extra": {
-          "mode": "online_15m",
-          "secid": "RTSI",
-          "interval_minutes": 15,
-          "initial_lookback_days": 5,
-          "max_latest_age_days": 30,
-          "session_anchor_time": "10:00:00"
-        }
-      },
-      "series": [
-        {
-          "series_code": "MOEX:RTSI:15M",
-          "series_name": "RTS Index, 15m close aggregated from 1m candles"
-        }
-      ],
-      "metadata": {
-        "note": "MOEX ISS does not publish native interval=15 candles; this source aggregates ISS interval=1 candles into closed 15-minute bars."
-      }
-    },
-    {
       "source_code": "CBR_SECINFO_BLIQUIDITY",
       "source_name": "CBR banking sector structural liquidity",
       "source_type": "api",
@@ -1152,6 +1167,9 @@
       }
     },
     {
+      "_comment": "Nowcast group: Russia prices, activity, and external trade"
+    },
+    {
       "source_code": "RU_CPI_MOM_CSV",
       "source_name": "Russia CPI MoM – historical CSV (statbureau.org)",
       "source_type": "manual",
@@ -1263,6 +1281,34 @@
       }
     },
     {
+      "source_code": "ROSSTAT_RU_INDUSTRIAL_PRODUCTION",
+      "source_name": "Rosstat Russia industrial production index YoY - live feed",
+      "source_type": "web",
+      "adapter_name": "rosstat_industrial",
+      "enabled": true,
+      "schedule_cron": "*/2 * * * *",
+      "scrape": {
+        "url": "https://rosstat.gov.ru/enterprise_industrial",
+        "parser": "text",
+        "series_code": "RU_INDUSTRIAL_PRODUCTION",
+        "start_date": "2015-01-01",
+        "extra": {
+          "global_series_latest": true,
+          "preserve_vintage_at": true,
+          "news_pages": 6
+        }
+      },
+      "series": [
+        {
+          "series_code": "RU_INDUSTRIAL_PRODUCTION",
+          "series_name": "Russia industrial production index, percent of corresponding month previous year"
+        }
+      ],
+      "metadata": {
+        "note": "Live updater for RU_INDUSTRIAL_PRODUCTION. Each run reads Rosstat enterprise_industrial, parses current ind_baza_* XLSX files for OKVED2 BCDE, compares against the latest stored RU_INDUSTRIAL_PRODUCTION observation globally, and inserts only newly published months. publication_at is resolved from recent Rosstat news releases where available; vintage_at is the update date of the source XLSX file."
+      }
+    },
+    {
       "source_code": "RU_RETAIL_SALES_CSV",
       "source_name": "Russia retail sales - historical CSV (Rosstat)",
       "source_type": "manual",
@@ -1317,31 +1363,256 @@
       }
     },
     {
-      "source_code": "ROSSTAT_RU_INDUSTRIAL_PRODUCTION",
-      "source_name": "Rosstat Russia industrial production index YoY - live feed",
+      "source_code": "RU_TRADE_BALANCE_CSV",
+      "source_name": "Russia trade balance - historical CSV (CBR)",
+      "source_type": "manual",
+      "adapter_name": "manual_csv",
+      "enabled": true,
+      "schedule_cron": null,
+      "csv": {
+        "path": "storage/exports/russia.trade_balance.monthly.csv",
+        "delimiter": ",",
+        "date_column": "observed_at",
+        "value_column": "value",
+        "series_code": "RU_TRADE_BALANCE",
+        "date_format": "%Y-%m-%d",
+        "release_date_column": "publication_at",
+        "vintage_date_column": "vintage_at"
+      },
+      "series": [
+        {
+          "series_code": "RU_TRADE_BALANCE",
+          "series_name": "Russia goods trade balance, million USD, balance of payments methodology"
+        }
+      ],
+      "metadata": {
+        "note": "Historical monthly backfill from storage/exports/russia.trade_balance.monthly.csv, generated by storage/exports/build_ru_trade_balance.py from the official Bank of Russia trade.xls file on https://www.cbr.ru/statistics/macro_itm/external_sector/etg/. Indicator: goods exports FOB minus goods imports FOB, million USD, balance of payments methodology. Range starts at 2015-01-01. publication_at and vintage_at are the Bank of Russia file update date shown in the source workbook, with HTTP Last-Modified as fallback."
+      }
+    },
+    {
+      "source_code": "CBR_RU_TRADE_BALANCE",
+      "source_name": "CBR Russia trade balance - live feed",
       "source_type": "web",
-      "adapter_name": "rosstat_industrial",
+      "adapter_name": "cbr_trade_balance",
       "enabled": true,
       "schedule_cron": "*/2 * * * *",
       "scrape": {
-        "url": "https://rosstat.gov.ru/enterprise_industrial",
+        "url": "https://www.cbr.ru/vfs/statistics/credit_statistics/trade/trade.xls",
         "parser": "text",
-        "series_code": "RU_INDUSTRIAL_PRODUCTION",
+        "series_code": "RU_TRADE_BALANCE",
         "start_date": "2015-01-01",
         "extra": {
           "global_series_latest": true,
           "preserve_vintage_at": true,
-          "news_pages": 6
+          "page_url": "https://www.cbr.ru/statistics/macro_itm/external_sector/etg/"
         }
       },
       "series": [
         {
-          "series_code": "RU_INDUSTRIAL_PRODUCTION",
-          "series_name": "Russia industrial production index, percent of corresponding month previous year"
+          "series_code": "RU_TRADE_BALANCE",
+          "series_name": "Russia goods trade balance, million USD, balance of payments methodology"
         }
       ],
       "metadata": {
-        "note": "Live updater for RU_INDUSTRIAL_PRODUCTION. Each run reads Rosstat enterprise_industrial, parses current ind_baza_* XLSX files for OKVED2 BCDE, compares against the latest stored RU_INDUSTRIAL_PRODUCTION observation globally, and inserts only newly published months. publication_at is resolved from recent Rosstat news releases where available; vintage_at is the update date of the source XLSX file."
+        "note": "Live updater for RU_TRADE_BALANCE. Each run reads the official Bank of Russia trade.xls workbook, compares against the latest stored RU_TRADE_BALANCE observation globally, and inserts only newly published months. Value is goods exports FOB minus goods imports FOB, million USD. publication_at and vintage_at are set to the Bank of Russia workbook update date."
+      }
+    },
+    {
+      "_comment": "Nowcast group: Russia fiscal flows and tax calendar"
+    },
+    {
+      "source_code": "MINFIN_RU_FISCAL_OILGAS",
+      "source_name": "Minfin Russia oil/gas fiscal revenue and FX operations - live feed",
+      "source_type": "web",
+      "adapter_name": "minfin_oilgas",
+      "enabled": true,
+      "schedule_cron": "0 9 * * 1-5",
+      "scrape": {
+        "url": "https://minfin.gov.ru/ru/document?id_4=122094-svedeniya_o_formirovanii_i_ispolzovanii_dopolnitelnykh_neftegazovykh_dokhodov_federalnogo_byudzheta_v_2018-2025_godakh",
+        "parser": "text",
+        "start_date": "2017-02-01",
+        "extra": {
+          "historical_csv_path": "storage/exports/russia_fiscal_oilgas_monthly_from_2017_02.csv",
+          "preserve_vintage_at": true
+        }
+      },
+      "series": [
+        {
+          "series_code": "RU_FISCAL_OILGAS_REVENUE",
+          "series_name": "Russia federal budget oil and gas revenues, billion RUB"
+        },
+        {
+          "series_code": "RU_FISCAL_FX_OPERATION_AMOUNT",
+          "series_name": "Russia Minfin FX and gold purchase/sale operation amount, billion RUB"
+        }
+      ],
+      "metadata": {
+        "note": "Bootstrap + live updater for Minfin oil/gas fiscal data. Each run first reads historical monthly observations from storage/exports/russia_fiscal_oilgas_monthly_from_2017_02.csv, then reads the official Minfin document table, skips annual-total columns, and appends live monthly observations that are missing from the historical CSV. Historical rows use publication_at from the CSV; live rows use the Minfin document update date as publication_at and vintage_at."
+      }
+    },
+    {
+      "source_code": "RU_TAX_DUMMY_CALENDAR",
+      "source_name": "Russia tax dummy calendar",
+      "source_type": "manual",
+      "adapter_name": "ru_tax_dummy_calendar",
+      "enabled": true,
+      "schedule_cron": "0 7 * * *",
+      "csv": {
+        "path": "storage/exports/ru_tax_dummy_calendar_2015_2026.csv",
+        "delimiter": ",",
+        "date_column": "date",
+        "date_format": "%Y-%m-%d"
+      },
+      "series": [
+        {
+          "series_code": "RU_TAX_RU_BUSINESS_DAY",
+          "series_name": "Russia tax calendar is RU business day"
+        },
+        {
+          "series_code": "RU_TAX_ANY_DUE_DUMMY",
+          "series_name": "Russia tax calendar any tax due dummy"
+        },
+        {
+          "series_code": "RU_TAX_DUE_COUNT",
+          "series_name": "Russia tax calendar tax due count"
+        },
+        {
+          "series_code": "RU_TAX_ANY_WINDOW_T_MINUS_3_TO_T",
+          "series_name": "Russia tax calendar any tax due window t-3 to t"
+        },
+        {
+          "series_code": "RU_TAX_WEEK_DUMMY",
+          "series_name": "Russia tax calendar tax week dummy"
+        },
+        {
+          "series_code": "RU_TAX_ANY_T_MINUS_3",
+          "series_name": "Russia tax calendar any tax t-3 dummy"
+        },
+        {
+          "series_code": "RU_TAX_ANY_T_MINUS_2",
+          "series_name": "Russia tax calendar any tax t-2 dummy"
+        },
+        {
+          "series_code": "RU_TAX_ANY_T_MINUS_1",
+          "series_name": "Russia tax calendar any tax t-1 dummy"
+        },
+        {
+          "series_code": "RU_TAX_ANY_T0",
+          "series_name": "Russia tax calendar any tax t0 dummy"
+        },
+        {
+          "series_code": "RU_TAX_VAT_DUE_DUMMY",
+          "series_name": "Russia tax calendar VAT due dummy"
+        },
+        {
+          "series_code": "RU_TAX_VAT_T_MINUS_3",
+          "series_name": "Russia tax calendar VAT t-3 dummy"
+        },
+        {
+          "series_code": "RU_TAX_VAT_T_MINUS_2",
+          "series_name": "Russia tax calendar VAT t-2 dummy"
+        },
+        {
+          "series_code": "RU_TAX_VAT_T_MINUS_1",
+          "series_name": "Russia tax calendar VAT t-1 dummy"
+        },
+        {
+          "series_code": "RU_TAX_VAT_T0",
+          "series_name": "Russia tax calendar VAT t0 dummy"
+        },
+        {
+          "series_code": "RU_TAX_VAT_WINDOW_T_MINUS_3_TO_T",
+          "series_name": "Russia tax calendar VAT window t-3 to t"
+        },
+        {
+          "series_code": "RU_TAX_PROFIT_DUE_DUMMY",
+          "series_name": "Russia tax calendar profit tax due dummy"
+        },
+        {
+          "series_code": "RU_TAX_PROFIT_T_MINUS_3",
+          "series_name": "Russia tax calendar profit tax t-3 dummy"
+        },
+        {
+          "series_code": "RU_TAX_PROFIT_T_MINUS_2",
+          "series_name": "Russia tax calendar profit tax t-2 dummy"
+        },
+        {
+          "series_code": "RU_TAX_PROFIT_T_MINUS_1",
+          "series_name": "Russia tax calendar profit tax t-1 dummy"
+        },
+        {
+          "series_code": "RU_TAX_PROFIT_T0",
+          "series_name": "Russia tax calendar profit tax t0 dummy"
+        },
+        {
+          "series_code": "RU_TAX_PROFIT_WINDOW_T_MINUS_3_TO_T",
+          "series_name": "Russia tax calendar profit tax window t-3 to t"
+        },
+        {
+          "series_code": "RU_TAX_NDPI_DUE_DUMMY",
+          "series_name": "Russia tax calendar NDPI due dummy"
+        },
+        {
+          "series_code": "RU_TAX_NDPI_T_MINUS_3",
+          "series_name": "Russia tax calendar NDPI t-3 dummy"
+        },
+        {
+          "series_code": "RU_TAX_NDPI_T_MINUS_2",
+          "series_name": "Russia tax calendar NDPI t-2 dummy"
+        },
+        {
+          "series_code": "RU_TAX_NDPI_T_MINUS_1",
+          "series_name": "Russia tax calendar NDPI t-1 dummy"
+        },
+        {
+          "series_code": "RU_TAX_NDPI_T0",
+          "series_name": "Russia tax calendar NDPI t0 dummy"
+        },
+        {
+          "series_code": "RU_TAX_NDPI_WINDOW_T_MINUS_3_TO_T",
+          "series_name": "Russia tax calendar NDPI window t-3 to t"
+        },
+        {
+          "series_code": "RU_TAX_QTR_PAYMENT_DUE_DUMMY",
+          "series_name": "Russia tax calendar quarter tax payment due dummy"
+        },
+        {
+          "series_code": "RU_TAX_QTR_PAYMENT_T_MINUS_3",
+          "series_name": "Russia tax calendar quarter tax payment t-3 dummy"
+        },
+        {
+          "series_code": "RU_TAX_QTR_PAYMENT_T_MINUS_2",
+          "series_name": "Russia tax calendar quarter tax payment t-2 dummy"
+        },
+        {
+          "series_code": "RU_TAX_QTR_PAYMENT_T_MINUS_1",
+          "series_name": "Russia tax calendar quarter tax payment t-1 dummy"
+        },
+        {
+          "series_code": "RU_TAX_QTR_PAYMENT_T0",
+          "series_name": "Russia tax calendar quarter tax payment t0 dummy"
+        },
+        {
+          "series_code": "RU_TAX_QTR_PAYMENT_WINDOW_T_MINUS_3_TO_T",
+          "series_name": "Russia tax calendar quarter tax payment window t-3 to t"
+        },
+        {
+          "series_code": "RU_TAX_QTR_END_LAST_BUSINESS_DAY",
+          "series_name": "Russia tax calendar quarter end last business day dummy"
+        },
+        {
+          "series_code": "RU_TAX_QTR_END_WINDOW_T_MINUS_3_TO_T",
+          "series_name": "Russia tax calendar quarter end window t-3 to t"
+        }
+      ],
+      "metadata": {
+        "auto_extend": {
+          "enabled": true,
+          "release_month": 9,
+          "release_window_days": 15,
+          "production_calendar_url_template": "https://xmlcalendar.ru/data/ru/{year}/calendar.json"
+        },
+        "note": "Loads daily RU tax dummy variables from storage/exports/ru_tax_dummy_calendar_2015_2026.csv. The scheduled run checks daily; only during the usual production-calendar release window (September +/- 15 days) it looks for the next year's RU production calendar and appends generated dummy rows when the calendar becomes available."
       }
     }
   ],
