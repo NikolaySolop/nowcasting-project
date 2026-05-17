@@ -13,7 +13,7 @@ from storage.db.session import async_session_factory
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Load configured CSV/manual sources into storage.")
-    parser.add_argument("source_codes", nargs="+", help="Source code(s) to load, e.g. RU_INDUSTRIAL_PRODUCTION_CSV")
+    parser.add_argument("source_codes", nargs="+", help="Source code(s) to load, e.g. RU_TAX_DUMMY_CALENDAR")
     parser.add_argument(
         "--config",
         type=Path,

@@ -1,13 +1,15 @@
 import re
+from calendar import monthrange
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from email.utils import parsedate_to_datetime
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
 
 from ingestion.adapters.base import AdapterError, BaseAdapter, FetchContext, FetchResult
-from ingestion.schemas.observations import RawObservationIn
+from ingestion.schemas.observations import ObservationIn
 
 
 class CbrTradeBalanceAdapter(BaseAdapter):
@@ -40,8 +42,11 @@ class CbrTradeBalanceAdapter(BaseAdapter):
 
         url = str(spec.url or (spec.extra or {}).get("trade_url") or self.cbr_trade_url)
         page_url = str((spec.extra or {}).get("page_url") or self.cbr_page_url)
+        extra = spec.extra or {}
+        series_code = str(spec.series_code or extra.get("series_code") or self.series_code)
         start_date = spec.start_date.date() if spec.start_date else date(2015, 1, 1)
-        latest = context.latest_observed_at_by_series.get(self.series_code)
+        latest = context.latest_observed_at_by_series.get(series_code)
+        loaded_at = datetime.now(timezone.utc)
 
         headers = {"User-Agent": context.settings.request_user_agent}
         headers.update(spec.headers)
@@ -61,22 +66,27 @@ class CbrTradeBalanceAdapter(BaseAdapter):
                 raise AdapterError(f"CBR trade balance XLS request failed: {type(exc).__name__}: {exc!r}") from exc
 
         source_rows = self._read_xls_rows(response.content, "Ежемесячные")
-        publication_at = self._publication_datetime(source_rows, response.headers.get("last-modified"))
-        rows = self._parse_trade_balance_rows(
-            source_rows,
-            start_date=start_date,
-            latest_observed_at=latest.date() if latest else None,
-        )
+        file_update_at = self._publication_datetime(source_rows, response.headers.get("last-modified"))
+        rows = self._parse_trade_balance_rows(source_rows, start_date=start_date)
+        start_anchor = datetime(start_date.year, start_date.month, start_date.day, tzinfo=timezone.utc)
+        is_backfill = latest is None or latest < start_anchor
         observations = [
-            self._to_observation(context.source.source_code, row, publication_at, url, page_url)
+            self._to_observation(
+                context.source.source_code,
+                series_code,
+                row,
+                self._published_at(row, extra, loaded_at, is_backfill),
+            )
             for row in rows
+            if latest is None or row["reference_start"] > latest
         ]
         return FetchResult(
-            observations=observations,
+            table_observations=observations,
+            loaded_at=loaded_at,
             raw_payload={
                 "url": url,
                 "page_url": page_url,
-                "publication_at": publication_at.date().isoformat() if publication_at else None,
+                "file_update_at": file_update_at.isoformat() if file_update_at else None,
                 "row_count": len(rows),
                 "observation_count": len(observations),
             },
@@ -100,7 +110,6 @@ class CbrTradeBalanceAdapter(BaseAdapter):
         rows: list[list[Any]],
         *,
         start_date: date,
-        latest_observed_at: date | None,
     ) -> list[dict[str, Any]]:
         output: list[dict[str, Any]] = []
         for row in rows:
@@ -114,8 +123,6 @@ class CbrTradeBalanceAdapter(BaseAdapter):
             period = date(year, month, 1)
             if period < start_date:
                 continue
-            if latest_observed_at is not None and period <= latest_observed_at:
-                continue
 
             exports = self._parse_decimal(row[2])
             imports = self._parse_decimal(row[8])
@@ -125,6 +132,8 @@ class CbrTradeBalanceAdapter(BaseAdapter):
             output.append(
                 {
                     "period": period,
+                    "reference_start": datetime(period.year, period.month, 1, tzinfo=timezone.utc),
+                    "reference_end": self._month_end(period),
                     "value": exports - imports,
                     "export_goods_fob": exports,
                     "import_goods_fob": imports,
@@ -132,32 +141,51 @@ class CbrTradeBalanceAdapter(BaseAdapter):
             )
         return output
 
+    @staticmethod
     def _to_observation(
-        self,
         source_code: str,
+        series_code: str,
         row: dict[str, Any],
-        publication_at: datetime | None,
-        source_url: str,
-        page_url: str,
-    ) -> RawObservationIn:
-        period = row["period"]
-        vintage_at = publication_at or datetime.now(timezone.utc)
-        return RawObservationIn(
-            series_code=self.series_code,
+        published_at: datetime,
+    ) -> ObservationIn:
+        return ObservationIn(
+            series_code=series_code,
             source_code=source_code,
-            observed_at=datetime(period.year, period.month, period.day, tzinfo=timezone.utc),
-            publication_at=publication_at,
-            vintage_at=vintage_at,
-            value_numeric=row["value"],
-            raw_payload={
-                "source_url": source_url,
-                "cbr_page_url": page_url,
-                "unit": "million USD",
-                "measure": "goods_exports_fob_minus_goods_imports_fob",
-                "export_goods_fob": str(row["export_goods_fob"]),
-                "import_goods_fob": str(row["import_goods_fob"]),
-                "publication_at_source": "workbook_update_date" if publication_at else "missing",
-            },
+            reference_date=row["period"],
+            reference_start=row["reference_start"],
+            reference_end=row["reference_end"],
+            value=row["value"],
+            published_at=published_at,
+        )
+
+    def _published_at(
+        self,
+        row: dict[str, Any],
+        extra: dict[str, Any],
+        loaded_at: datetime,
+        is_backfill: bool,
+    ) -> datetime:
+        if not is_backfill:
+            return loaded_at
+
+        period: date = row["period"]
+        months_after = self._parse_int(extra.get("backfill_publication_months_after"), 2)
+        publication_month = self._add_months(period, months_after)
+        day = self._parse_int(extra.get("backfill_publication_day"), 13)
+        hour, minute = self._parse_time(str(extra.get("backfill_publication_time", "10:00")))
+        try:
+            tz = ZoneInfo(str(extra.get("publication_timezone", "Europe/Moscow")))
+        except ZoneInfoNotFoundError:
+            tz = timezone.utc
+
+        publication_day = min(max(day, 1), monthrange(publication_month.year, publication_month.month)[1])
+        return datetime(
+            publication_month.year,
+            publication_month.month,
+            publication_day,
+            hour,
+            minute,
+            tzinfo=tz,
         )
 
     def _publication_datetime(self, rows: list[list[Any]], last_modified: str | None) -> datetime | None:
@@ -191,6 +219,36 @@ class CbrTradeBalanceAdapter(BaseAdapter):
             return Decimal(str(value).replace(" ", "").replace(",", "."))
         except (InvalidOperation, ValueError):
             return None
+
+    @staticmethod
+    def _month_end(period: date) -> datetime:
+        last_day = monthrange(period.year, period.month)[1]
+        return datetime(period.year, period.month, last_day, 23, 59, 59, 999999, tzinfo=timezone.utc)
+
+    @staticmethod
+    def _add_months(period: date, months: int) -> date:
+        month_index = period.month - 1 + months
+        year = period.year + month_index // 12
+        month = month_index % 12 + 1
+        return date(year, month, 1)
+
+    @staticmethod
+    def _parse_int(value: object, default: int) -> int:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return default
+
+    @staticmethod
+    def _parse_time(value: str) -> tuple[int, int]:
+        match = re.match(r"^(\d{1,2}):(\d{2})$", value.strip())
+        if not match:
+            return 10, 0
+        hour = int(match.group(1))
+        minute = int(match.group(2))
+        if hour > 23 or minute > 59:
+            return 10, 0
+        return hour, minute
 
     @staticmethod
     def _parse_ru_update_datetime(value: object) -> datetime | None:

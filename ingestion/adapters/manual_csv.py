@@ -5,7 +5,7 @@ from decimal import Decimal, InvalidOperation
 import httpx
 
 from ingestion.adapters.base import AdapterError, BaseAdapter, FetchContext, FetchResult
-from ingestion.schemas.observations import RawObservationIn
+from ingestion.schemas.observations import ObservationIn, RawObservationIn
 
 
 class ManualCsvAdapter(BaseAdapter):
@@ -27,7 +27,9 @@ class ManualCsvAdapter(BaseAdapter):
             raise AdapterError(f"source {context.source.source_code} has no csv path or url")
 
         reader = csv.DictReader(content.splitlines(), delimiter=spec.delimiter)
+        store_in_observations = bool(spec.store_in_observations)
         observations: list[RawObservationIn] = []
+        table_observations: list[ObservationIn] = []
         for row in reader:
             series_code = row.get(spec.series_code_column) if spec.series_code_column else spec.series_code
             if not series_code:
@@ -40,20 +42,38 @@ class ManualCsvAdapter(BaseAdapter):
             publication_at = self._parse_date(pub_raw, None) if pub_raw and pub_raw.strip() else None
             vintage_raw = row.get(spec.vintage_date_column) if spec.vintage_date_column else None
             vintage_at = self._parse_date(vintage_raw, None) if vintage_raw and vintage_raw.strip() else None
-            observations.append(
-                RawObservationIn(
-                    series_code=series_code,
-                    source_code=context.source.source_code,
-                    observed_at=observed_at,
-                    publication_at=publication_at,
-                    vintage_at=vintage_at or datetime.now(timezone.utc),
-                    value_numeric=value_numeric,
-                    value_text=value_text if value_numeric is None else None,
-                    raw_payload=dict(row),
+            if store_in_observations:
+                if value_numeric is None:
+                    continue
+                table_observations.append(
+                    ObservationIn(
+                        series_code=series_code,
+                        source_code=context.source.source_code,
+                        reference_date=observed_at.date(),
+                        reference_start=observed_at,
+                        reference_end=self._month_end(observed_at),
+                        value=value_numeric,
+                        published_at=publication_at or vintage_at or datetime.now(timezone.utc),
+                    )
                 )
-            )
+            else:
+                observations.append(
+                    RawObservationIn(
+                        series_code=series_code,
+                        source_code=context.source.source_code,
+                        observed_at=observed_at,
+                        publication_at=publication_at,
+                        vintage_at=vintage_at or datetime.now(timezone.utc),
+                        value_numeric=value_numeric,
+                        value_text=value_text if value_numeric is None else None,
+                        raw_payload=dict(row),
+                    )
+                )
 
-        return FetchResult(observations=observations)
+        return FetchResult(
+            observations=[] if store_in_observations else observations,
+            table_observations=table_observations,
+        )
 
     @staticmethod
     def _parse_date(value: str, date_format: str | None) -> datetime:
@@ -71,3 +91,11 @@ class ManualCsvAdapter(BaseAdapter):
             return Decimal(value.replace(" ", "").replace(",", "."))
         except (InvalidOperation, ValueError):
             return None
+
+    @staticmethod
+    def _month_end(value: datetime) -> datetime:
+        if value.month == 12:
+            next_month = value.replace(year=value.year + 1, month=1, day=1)
+        else:
+            next_month = value.replace(month=value.month + 1, day=1)
+        return next_month - datetime.resolution

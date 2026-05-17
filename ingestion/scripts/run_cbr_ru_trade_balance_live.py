@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the live CBR RU_TRADE_BALANCE ingestion job once."""
+"""Run the live CBR_RU_TRADE_BALANCE_LIVE ingestion job once."""
 
 import argparse
 import asyncio
@@ -10,7 +10,7 @@ from ingestion.services.ingestion_service import IngestionService
 from ingestion.services.source_registry import SourceRegistry
 from storage.db.session import async_session_factory
 
-SOURCE_CODE = "CBR_RU_TRADE_BALANCE"
+SOURCE_CODE = "CBR_RU_TRADE_BALANCE_LIVE"
 
 
 def parse_args() -> argparse.Namespace:

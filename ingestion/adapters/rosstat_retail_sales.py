@@ -1,24 +1,23 @@
 import re
 import zipfile
+from calendar import monthrange
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from io import BytesIO
 from typing import Any
 from xml.etree import ElementTree
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
 from bs4 import BeautifulSoup
 
 from ingestion.adapters.base import AdapterError, BaseAdapter, FetchContext, FetchResult
-from ingestion.schemas.observations import RawObservationIn
+from ingestion.schemas.observations import ObservationIn
 
 
-class RosstatRetailSalesAdapter(BaseAdapter):
-    name = "rosstat_retail_sales"
-
+class RosstatRetailWorkbookMixin:
     rosstat_base_url = "https://rosstat.gov.ru"
     retail_page_url = "https://rosstat.gov.ru/statistics/roznichnayatorgovlya"
-    series_code = "RU_RETAIL_SALES"
 
     months = {
         "январь": 1,
@@ -39,41 +38,6 @@ class RosstatRetailSalesAdapter(BaseAdapter):
         "rel": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
         "pkgrel": "http://schemas.openxmlformats.org/package/2006/relationships",
     }
-
-    async def fetch(self, context: FetchContext) -> FetchResult:
-        spec = context.source.scrape
-        page_url = str(spec.url) if spec and spec.url else self.retail_page_url
-        start_date = spec.start_date.date() if spec and spec.start_date else date(2015, 1, 1)
-
-        headers = {"User-Agent": context.settings.request_user_agent}
-        async with httpx.AsyncClient(
-            timeout=context.settings.request_timeout_seconds,
-            headers=headers,
-            follow_redirects=True,
-            verify=False,
-        ) as client:
-            page_html = await self._get_text(client, page_url)
-            sources = self._find_sources(page_html, page_url)
-            if not sources:
-                raise AdapterError("Rosstat retail page has no Oborot XLS/XLSX sources")
-
-            latest = context.latest_observed_at_by_series.get(self.series_code)
-            rows: dict[date, dict[str, Any]] = {}
-            for source in sources:
-                content = await self._get_bytes(client, source["url"])
-                for row in self.parse_workbook(content, source, start_date=start_date):
-                    if latest is not None and row["period"] <= latest.date():
-                        continue
-                    rows[row["period"]] = row
-
-        observations = [
-            self._to_observation(context.source.source_code, row)
-            for row in [rows[key] for key in sorted(rows)]
-        ]
-        return FetchResult(
-            observations=observations,
-            raw_payload={"page_url": page_url, "source_files": sources},
-        )
 
     async def _get_text(self, client: httpx.AsyncClient, url: str) -> str:
         response = await client.get(url)
@@ -199,25 +163,6 @@ class RosstatRetailSalesAdapter(BaseAdapter):
             )
         return output
 
-    def _to_observation(self, source_code: str, row: dict[str, Any]) -> RawObservationIn:
-        period = row["period"]
-        source_updated_at = self._parse_iso_date(row["source_updated_at"])
-        return RawObservationIn(
-            series_code=self.series_code,
-            source_code=source_code,
-            observed_at=datetime(period.year, period.month, period.day, tzinfo=timezone.utc),
-            publication_at=source_updated_at,
-            vintage_at=source_updated_at or datetime.now(timezone.utc),
-            value_numeric=row["value"],
-            raw_payload={
-                "source_url": row["source_url"],
-                "source_filename": row["source_filename"],
-                "rosstat_page_url": row["page_url"],
-                "source_updated_at": row["source_updated_at"],
-                "unit": "million RUB, current prices",
-            },
-        )
-
     def _read_shared_strings(self, workbook: zipfile.ZipFile) -> list[str]:
         try:
             payload = workbook.read("xl/sharedStrings.xml")
@@ -314,3 +259,185 @@ class RosstatRetailSalesAdapter(BaseAdapter):
         for char in letters:
             index = index * 26 + (ord(char) - ord("A") + 1)
         return index - 1
+
+
+class RosstatRetailMomLiveAdapter(RosstatRetailWorkbookMixin, BaseAdapter):
+    name = "rosstat_retail_mom_live"
+
+    series_code = "RU_RETAIL_MOM_ROSSTAT_LIVE"
+
+    async def fetch(self, context: FetchContext) -> FetchResult:
+        spec = context.source.scrape
+        extra = spec.extra if spec else {}
+        page_url = str(spec.url) if spec and spec.url else self.retail_page_url
+        series_code = str(spec.series_code or extra.get("series_code") or self.series_code) if spec else self.series_code
+        start_date = spec.start_date.date() if spec and spec.start_date else date(2015, 1, 1)
+        loaded_at = datetime.now(timezone.utc)
+
+        headers = {"User-Agent": context.settings.request_user_agent}
+        if spec:
+            headers.update(spec.headers)
+
+        async with httpx.AsyncClient(
+            timeout=context.settings.request_timeout_seconds,
+            headers=headers,
+            follow_redirects=True,
+            verify=False,
+        ) as client:
+            page_html = await self._get_text(client, page_url)
+            sources = self._find_sources(page_html, page_url)
+            if not sources:
+                raise AdapterError("Rosstat retail page has no Oborot XLS/XLSX sources")
+
+            levels: dict[date, dict[str, Any]] = {}
+            for source in sources:
+                content = await self._get_bytes(client, source["url"])
+                for row in self.parse_workbook(content, source, start_date=date(2000, 1, 1)):
+                    levels[row["period"]] = row
+
+        rows = self._mom_rows(levels, start_date)
+        if not rows:
+            return FetchResult(
+                table_observations=[],
+                loaded_at=loaded_at,
+                raw_payload={
+                    "page_url": page_url,
+                    "source_files": sources,
+                    "row_count": 0,
+                    "observation_count": 0,
+                    "start_date": start_date.isoformat(),
+                },
+            )
+        if bool(extra.get("latest_only", True)):
+            rows = [max(rows, key=lambda item: item["period"])]
+
+        latest = context.latest_observed_at_by_series.get(series_code)
+        start_anchor = datetime(start_date.year, start_date.month, start_date.day, tzinfo=timezone.utc)
+        is_backfill = latest is None or latest < start_anchor
+        observations = [
+            self._to_table_observation(
+                context.source.source_code,
+                series_code,
+                row,
+                self._published_at(row, extra, loaded_at, is_backfill),
+            )
+            for row in rows
+            if latest is None or row["reference_start"] > latest
+        ]
+        return FetchResult(
+            table_observations=observations,
+            loaded_at=loaded_at,
+            raw_payload={
+                "page_url": page_url,
+                "source_files": sources,
+                "row_count": len(rows),
+                "observation_count": len(observations),
+            },
+        )
+
+    def _mom_rows(self, levels: dict[date, dict[str, Any]], start_date: date) -> list[dict[str, Any]]:
+        output: list[dict[str, Any]] = []
+        for period in sorted(levels):
+            if period < start_date:
+                continue
+            previous_period = self._previous_month(period)
+            previous = levels.get(previous_period)
+            if previous is None:
+                continue
+            current_value = Decimal(levels[period]["value"])
+            previous_value = Decimal(previous["value"])
+            if previous_value == 0:
+                continue
+            reference_start = datetime(period.year, period.month, 1, tzinfo=timezone.utc)
+            value = ((current_value / previous_value) - Decimal("1")) * Decimal("100")
+            output.append(
+                {
+                    "period": period,
+                    "reference_start": reference_start,
+                    "reference_end": self._month_end(reference_start),
+                    "value": value.quantize(Decimal("0.0001")),
+                    "current_level": current_value,
+                    "previous_level": previous_value,
+                    "source_url": levels[period]["source_url"],
+                    "source_filename": levels[period]["source_filename"],
+                    "page_url": levels[period]["page_url"],
+                }
+            )
+        return output
+
+    def _published_at(
+        self,
+        row: dict[str, Any],
+        extra: dict[str, Any],
+        loaded_at: datetime,
+        is_backfill: bool,
+    ) -> datetime:
+        if not is_backfill:
+            return loaded_at
+
+        period: date = row["period"]
+        if period.month == 12:
+            year = period.year + 1
+            month = 1
+        else:
+            year = period.year
+            month = period.month + 1
+
+        day = self._parse_int(extra.get("backfill_publication_day_next_month"), 29)
+        hour, minute = self._parse_time(str(extra.get("backfill_publication_time", "10:00")))
+        try:
+            tz = ZoneInfo(str(extra.get("publication_timezone", "Europe/Moscow")))
+        except ZoneInfoNotFoundError:
+            tz = timezone.utc
+
+        publication_day = min(max(day, 1), monthrange(year, month)[1])
+        return datetime(year, month, publication_day, hour, minute, tzinfo=tz)
+
+    @staticmethod
+    def _to_table_observation(
+        source_code: str,
+        series_code: str,
+        row: dict[str, Any],
+        published_at: datetime,
+    ) -> ObservationIn:
+        return ObservationIn(
+            series_code=series_code,
+            source_code=source_code,
+            reference_date=row["period"],
+            reference_start=row["reference_start"],
+            reference_end=row["reference_end"],
+            value=row["value"],
+            published_at=published_at,
+        )
+
+    @staticmethod
+    def _previous_month(value: date) -> date:
+        if value.month == 1:
+            return date(value.year - 1, 12, 1)
+        return date(value.year, value.month - 1, 1)
+
+    @staticmethod
+    def _month_end(value: datetime) -> datetime:
+        if value.month == 12:
+            next_month = value.replace(year=value.year + 1, month=1)
+        else:
+            next_month = value.replace(month=value.month + 1)
+        return next_month - datetime.resolution
+
+    @staticmethod
+    def _parse_int(value: object, default: int) -> int:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return default
+
+    @staticmethod
+    def _parse_time(value: str) -> tuple[int, int]:
+        match = re.match(r"^(\d{1,2}):(\d{2})$", value.strip())
+        if not match:
+            return 10, 0
+        hour = int(match.group(1))
+        minute = int(match.group(2))
+        if hour > 23 or minute > 59:
+            return 10, 0
+        return hour, minute

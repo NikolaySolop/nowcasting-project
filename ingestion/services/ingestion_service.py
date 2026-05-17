@@ -2,8 +2,9 @@ import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,7 +15,7 @@ from ingestion.schemas.observations import ObservationIn, RawObservationIn
 from ingestion.schemas.sources import SeriesDefinition, SourceDefinition, SourceKind
 from ingestion.services.source_registry import SourceRegistry
 from ingestion.services.validation_service import ValidationService
-from storage.models.enums import Frequency, SourceType
+from storage.models.enums import Frequency, SourceType, TransformType
 from storage.models.observations import Observation
 from storage.models.raw_obsevations import RawObservation
 from storage.repositories.observation import ObservationRepository
@@ -76,6 +77,9 @@ class IngestionService:
         adapter = self.registry.build_adapter(source)
         latest_observed = await self._latest_observed_at_by_series(source)
         fetch_result = await self._fetch_with_retries(source, adapter, latest_observed)
+        await self._ensure_source(source)
+        if source.series:
+            await self._ensure_series_batch(source, {series.series_code for series in source.series})
         loaded_count, duplicate_count = await self._store_observations(
             source,
             fetch_result.observations,
@@ -121,27 +125,136 @@ class IngestionService:
             source,
             {observation.series_code for observation in valid_observations},
         )
+        extra = source.scrape.extra if source.scrape is not None else {}
+        if bool(extra.get("replace_table_observations", False)):
+            await self.session.execute(
+                delete(Observation).where(
+                    Observation.source_id == storage_source.id,
+                    Observation.series_id.in_([series.id for series in series_by_code.values()]),
+                )
+            )
+        if bool(extra.get("delete_non_publication_observations", False)):
+            await self.session.execute(
+                delete(Observation).where(
+                    Observation.source_id == storage_source.id,
+                    Observation.series_id.in_([series.id for series in series_by_code.values()]),
+                    Observation.reference_start != Observation.published_at,
+                )
+            )
+
         existing_rows = await self._existing_table_observation_rows(storage_source.id, series_by_code, valid_observations)
         latest_by_reference: dict[tuple[object, ...], tuple[datetime, Decimal]] = {}
         published_at_by_reference: dict[tuple[object, ...], set[datetime]] = {}
-        for series_id, reference_start, reference_end, published_at, value in existing_rows:
-            reference_key = (series_id, reference_start, reference_end)
+        latest_by_identity: dict[tuple[object, ...], tuple[object, datetime, Decimal]] = {}
+        previous_value_by_series = await self._previous_table_value_by_series(
+            storage_source.id,
+            series_by_code,
+            valid_observations,
+        )
+        for series_id, reference_date, reference_start, reference_end, published_at, value in existing_rows:
+            reference_key = (series_id, reference_date, reference_start, reference_end)
             value = Decimal(value)
             latest = latest_by_reference.get(reference_key)
             if latest is None or published_at > latest[0]:
                 latest_by_reference[reference_key] = (published_at, value)
             published_at_by_reference.setdefault(reference_key, set()).add(published_at)
+            latest_by_identity[(series_id, reference_start, published_at)] = (reference_date, reference_end, value)
 
         loaded_count = 0
         new_entities: list[Observation] = []
+        update_same_value_published_at = bool(
+            extra.get("update_same_value_published_at", False)
+        )
+        update_same_published_reference_end = bool(
+            extra.get("update_same_published_reference_end", False)
+        )
         for observation in valid_observations:
             storage_series = series_by_code[observation.series_code]
-            reference_key = (storage_series.id, observation.reference_start, observation.reference_end)
+            reference_key = (
+                storage_series.id,
+                observation.reference_date,
+                observation.reference_start,
+                observation.reference_end,
+            )
             value = Decimal(observation.value)
-            latest = latest_by_reference.get(reference_key)
-            if latest is not None and latest[1] == value:
+            identity_key = (storage_series.id, observation.reference_start, observation.published_at)
+            existing_identity = latest_by_identity.get(identity_key)
+            if update_same_published_reference_end and existing_identity is not None:
+                existing_reference_date, existing_reference_end, existing_value = existing_identity
+                if (
+                    existing_reference_date != observation.reference_date
+                    or existing_reference_end != observation.reference_end
+                    or existing_value != value
+                ):
+                    await self.session.execute(
+                        update(Observation)
+                        .where(
+                            Observation.source_id == storage_source.id,
+                            Observation.series_id == storage_series.id,
+                            Observation.reference_start == observation.reference_start,
+                            Observation.published_at == observation.published_at,
+                        )
+                        .values(
+                            reference_date=observation.reference_date,
+                            reference_end=observation.reference_end,
+                            value=value,
+                        )
+                    )
+                    latest_by_identity[identity_key] = (
+                        observation.reference_date,
+                        observation.reference_end,
+                        value,
+                    )
+                    loaded_count += 1
+                    continue
                 duplicate_count += 1
                 continue
+
+            latest = latest_by_reference.get(reference_key)
+            if latest is not None and latest[1] == value:
+                existing_published_ats = published_at_by_reference.get(reference_key, set())
+                if (
+                    update_same_value_published_at
+                    and latest[0] != observation.published_at
+                    and observation.published_at not in existing_published_ats
+                ):
+                    await self.session.execute(
+                        update(Observation)
+                        .where(
+                            Observation.source_id == storage_source.id,
+                            Observation.series_id == storage_series.id,
+                            Observation.reference_date == observation.reference_date,
+                            Observation.reference_start == observation.reference_start,
+                            Observation.reference_end == observation.reference_end,
+                            Observation.published_at == latest[0],
+                        )
+                        .values(published_at=observation.published_at)
+                    )
+                    existing_published_ats.discard(latest[0])
+                    existing_published_ats.add(observation.published_at)
+                    latest_by_reference[reference_key] = (observation.published_at, value)
+                    loaded_count += 1
+                    continue
+                duplicate_count += 1
+                continue
+            if (
+                observation.skip_equal_to_previous
+                and latest is None
+                and previous_value_by_series.get(storage_series.id) == value
+            ):
+                duplicate_count += 1
+                continue
+            if await self._compress_equal_table_observation_run(
+                source,
+                storage_source.id,
+                storage_series.id,
+                observation,
+                value,
+                loaded_at,
+            ):
+                duplicate_count += 1
+                continue
+            previous_value_by_series[storage_series.id] = value
             published_at = observation.published_at
             if latest is not None:
                 published_at = self._revision_published_at(
@@ -154,6 +267,7 @@ class IngestionService:
                 Observation(
                     series_id=storage_series.id,
                     source_id=storage_source.id,
+                    reference_date=observation.reference_date,
                     reference_start=observation.reference_start,
                     reference_end=observation.reference_end,
                     value=value,
@@ -329,11 +443,21 @@ class IngestionService:
         }
         if definition is None:
             return values
-        for field in ("frequency", "group_code", "subgroup_code", "description", "units"):
+        for field in (
+            "frequency",
+            "group_code",
+            "subgroup_code",
+            "description",
+            "units",
+            "default_transform",
+            "is_model_input",
+        ):
             value = getattr(definition, field)
             if value is not None:
                 if field == "frequency":
                     value = Frequency(value)
+                elif field == "default_transform":
+                    value = TransformType(value)
                 values[field] = value
         return values
 
@@ -351,9 +475,13 @@ class IngestionService:
             await self.session.flush()
 
     async def _latest_observed_at_by_series(self, source: SourceDefinition) -> dict[str, datetime]:
-        if source.adapter_name in {"fred_observations", "fred_sofr"}:
+        if self._stores_table_observations(source):
+            default_revision_check = 5 if source.adapter_name in {"fred_observations", "fred_sofr"} else 0
             revision_check_observations = int(
-                (source.scrape.extra if source.scrape else {}).get("revision_check_observations", 5)
+                (source.scrape.extra if source.scrape else {}).get(
+                    "revision_check_observations",
+                    default_revision_check,
+                )
             )
             return await self._latest_reference_start_by_series(
                 source,
@@ -489,6 +617,7 @@ class IngestionService:
         max_reference_start = max(observation.reference_start for observation in observations)
         stmt = select(
             Observation.series_id,
+            Observation.reference_date,
             Observation.reference_start,
             Observation.reference_end,
             Observation.published_at,
@@ -501,6 +630,80 @@ class IngestionService:
         )
         return list((await self.session.execute(stmt)).all())
 
+    async def _previous_table_value_by_series(
+        self,
+        source_id,
+        series_by_code: dict[str, object],
+        observations: list[ObservationIn],
+    ) -> dict[object, Decimal]:
+        result: dict[object, Decimal] = {}
+        observations_by_series: dict[str, list[ObservationIn]] = {}
+        for observation in observations:
+            if observation.skip_equal_to_previous:
+                observations_by_series.setdefault(observation.series_code, []).append(observation)
+
+        for series_code, series_observations in observations_by_series.items():
+            storage_series = series_by_code[series_code]
+            min_reference_start = min(observation.reference_start for observation in series_observations)
+            stmt = (
+                select(Observation.value)
+                .where(
+                    Observation.source_id == source_id,
+                    Observation.series_id == storage_series.id,
+                    Observation.reference_start < min_reference_start,
+                )
+                .order_by(Observation.reference_start.desc(), Observation.published_at.desc())
+                .limit(1)
+            )
+            previous_value = await self.session.scalar(stmt)
+            if previous_value is not None:
+                result[storage_series.id] = Decimal(previous_value)
+        return result
+
+    async def _compress_equal_table_observation_run(
+        self,
+        source: SourceDefinition,
+        source_id,
+        series_id,
+        observation: ObservationIn,
+        value: Decimal,
+        loaded_at: datetime,
+    ) -> bool:
+        if not observation.compress_equal_runs:
+            return False
+
+        current_reference_date = self._source_reference_date(source, loaded_at)
+        if observation.reference_date != current_reference_date:
+            return False
+
+        stmt = (
+            select(Observation)
+            .where(
+                Observation.source_id == source_id,
+                Observation.series_id == series_id,
+                Observation.reference_date == observation.reference_date,
+                Observation.reference_start < observation.reference_start,
+            )
+            .order_by(Observation.reference_start.desc())
+            .limit(2)
+        )
+        previous_rows = list((await self.session.scalars(stmt)).all())
+        if len(previous_rows) < 2:
+            return False
+
+        latest_previous, first_previous = previous_rows
+        if Decimal(latest_previous.value) != value or Decimal(first_previous.value) != value:
+            return False
+
+        await self.session.delete(latest_previous)
+        return True
+
+    @staticmethod
+    def _source_reference_date(source: SourceDefinition, value: datetime):
+        extra = source.scrape.extra if source.scrape is not None else {}
+        timezone_name = str(extra.get("exchange_timezone", "UTC"))
+        return value.astimezone(ZoneInfo(timezone_name)).date()
+
     @staticmethod
     def _revision_published_at(loaded_at: datetime, existing_published_at: set[datetime]) -> datetime:
         if loaded_at.tzinfo is None:
@@ -510,6 +713,13 @@ class IngestionService:
         while published_at in existing_published_at:
             published_at += timedelta(microseconds=1)
         return published_at
+
+    @staticmethod
+    def _stores_table_observations(source: SourceDefinition) -> bool:
+        if source.adapter_name in {"fred_observations", "fred_sofr", "tradingview"}:
+            return True
+        extra = source.scrape.extra if source.scrape is not None else {}
+        return bool(extra.get("store_in_observations", False))
 
     @staticmethod
     def _to_storage_source_type(source_type: SourceKind) -> SourceType:

@@ -1,8 +1,8 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import DateTime, ForeignKey, Numeric, PrimaryKeyConstraint, func
+from sqlalchemy import Date, DateTime, ForeignKey, Numeric, PrimaryKeyConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from storage.db.base import Base
@@ -29,6 +29,12 @@ class Observation(Base):
 
     source_id: Mapped[UUID] = mapped_column(
         ForeignKey("data_source.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    reference_date: Mapped[date] = mapped_column(
+        Date,
         nullable=False,
         index=True,
     )

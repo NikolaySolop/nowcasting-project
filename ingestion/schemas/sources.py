@@ -41,7 +41,7 @@ class WebScrapeSpec(BaseModel):
             return value
         if isinstance(value, str):
             raw = value.strip()
-            for fmt in ("%d.%m.%Y", "%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S"):
+            for fmt in ("%d.%m.%Y", "%m.%d.%Y", "%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S"):
                 try:
                     return datetime.strptime(raw, fmt)
                 except ValueError:
@@ -61,6 +61,7 @@ class CsvSpec(BaseModel):
     date_format: str | None = None
     release_date_column: str | None = None
     vintage_date_column: str | None = None
+    store_in_observations: bool = False
 
 
 class SeriesDefinition(BaseModel):
@@ -71,6 +72,8 @@ class SeriesDefinition(BaseModel):
     subgroup_code: str | None = None
     description: str | None = None
     units: str | None = None
+    default_transform: Literal["level", "log_return", "diff", "spread", "yoy", "mom"] | None = None
+    is_model_input: bool | None = None
 
 
 class SourceDefinition(BaseModel):

@@ -9,14 +9,15 @@ import random
 import ssl
 import string
 import struct
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import httpx
 
 from ingestion.adapters.base import AdapterError, BaseAdapter, FetchContext, FetchResult
-from ingestion.schemas.observations import ObservationKind, RawObservationIn
+from ingestion.schemas.observations import ObservationIn, ObservationKind, RawObservationIn
 
 
 class TradingViewAdapter(BaseAdapter):
@@ -25,6 +26,9 @@ class TradingViewAdapter(BaseAdapter):
     scanner_url_fallback = "https://symbol-search.tradingview.com/symbol"
     history_ws_host = "data.tradingview.com"
     history_ws_path = "/socket.io/websocket"
+    default_exchange_timezone = "America/New_York"
+    default_trading_session_open = time(hour=9, minute=30)
+    default_daily_session_close = time(hour=16, minute=15)
     scanner_fields = (
         "close",
         "change",
@@ -54,11 +58,55 @@ class TradingViewAdapter(BaseAdapter):
         if bool(spec.extra.get("backfill_enabled", True)):
             history = await self._fetch_backfill(context, ticker, interval_minutes, headers)
             if history:
-                return FetchResult(observations=history)
+                table_history = self._to_table_observations(
+                    history,
+                    interval_minutes,
+                    spec.extra,
+                    compress_equal_runs=False,
+                )
+                if table_history:
+                    return FetchResult(table_observations=table_history)
+
+        fetched_at = datetime.now(timezone.utc)
+        if not self._is_trading_session_time(fetched_at, spec.extra):
+            return FetchResult(observations=[], table_observations=[])
 
         max_retries = int(spec.extra.get("max_retries", 3))
         retry_delay_seconds = float(spec.extra.get("retry_delay_seconds", 0.6))
+        page_response: httpx.Response | None = None
+        market_status: str | None = None
         async with httpx.AsyncClient(timeout=context.settings.request_timeout_seconds, follow_redirects=True) as client:
+            page_response = await self._fetch_symbol_page_status(
+                client,
+                str(spec.url),
+                headers,
+                spec.params,
+                max_retries,
+                retry_delay_seconds,
+            )
+            market_status = self._extract_market_status(page_response.text)
+            if bool(spec.extra.get("require_market_open", False)) and market_status != "open":
+                return FetchResult(
+                    observations=[],
+                    table_observations=[],
+                    raw_payload={
+                        "url": str(page_response.url),
+                        "status_code": page_response.status_code,
+                        "market_status": market_status,
+                        "skip_reason": "market_not_open",
+                    },
+                )
+            if market_status == "closed":
+                return FetchResult(
+                    observations=[],
+                    table_observations=[],
+                    raw_payload={
+                        "url": str(page_response.url),
+                        "status_code": page_response.status_code,
+                        "market_status": "closed",
+                    },
+                )
+
             try:
                 quote, response = await self._fetch_quote(client, ticker, headers, spec.extra)
                 price = self._extract_quote_price(quote)
@@ -67,14 +115,16 @@ class TradingViewAdapter(BaseAdapter):
                     **headers,
                     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 }
-                response = await self._request_with_retries(
-                    client,
-                    str(spec.url),
-                    headers=fallback_headers,
-                    params=spec.params,
-                    max_retries=max_retries,
-                    retry_delay_seconds=retry_delay_seconds,
-                )
+                response = page_response
+                if response is None:
+                    response = await self._request_with_retries(
+                        client,
+                        str(spec.url),
+                        headers=fallback_headers,
+                        params=spec.params,
+                        max_retries=max_retries,
+                        retry_delay_seconds=retry_delay_seconds,
+                    )
                 response.raise_for_status()
                 price = self._extract_price(response.text)
                 quote = {
@@ -83,27 +133,33 @@ class TradingViewAdapter(BaseAdapter):
                     "scanner_error": str(exc),
                 }
 
-        observed_at = self._round_time(datetime.now(timezone.utc), interval_minutes)
+        observed_at = fetched_at
         last_observed = context.latest_observed_at_by_series.get(ticker)
         if last_observed is not None and observed_at <= last_observed:
             return FetchResult(observations=[])
 
+        observation = RawObservationIn(
+            series_code=ticker,
+            source_code=context.source.source_code,
+            observed_at=observed_at,
+            value_numeric=price,
+            kind=ObservationKind.QUOTE,
+            raw_payload={
+                "url": str(response.url),
+                "ticker": ticker,
+                "interval_minutes": interval_minutes,
+                "market_status": market_status,
+                "quote": quote,
+            },
+        )
         return FetchResult(
-            observations=[
-                RawObservationIn(
-                    series_code=ticker,
-                    source_code=context.source.source_code,
-                    observed_at=observed_at,
-                    value_numeric=price,
-                    kind=ObservationKind.QUOTE,
-                    raw_payload={
-                        "url": str(response.url),
-                        "ticker": ticker,
-                        "interval_minutes": interval_minutes,
-                        "quote": quote,
-                    },
-                )
-            ],
+            table_observations=self._to_table_observations(
+                [observation],
+                interval_minutes,
+                spec.extra,
+                compress_equal_runs=False,
+            ),
+            observations=[],
             raw_payload={"url": str(response.url), "status_code": response.status_code},
         )
 
@@ -123,17 +179,19 @@ class TradingViewAdapter(BaseAdapter):
             or spec.extra.get("backfill_interval")
             or "1d"
         ).strip()
-        history_delta = self._backfill_interval_to_timedelta(backfill_interval, interval_minutes)
         configured_start = spec.start_date
         if configured_start.tzinfo is None:
             configured_start = configured_start.replace(tzinfo=timezone.utc)
 
         last_observed = context.latest_observed_at_by_series.get(ticker)
-        start_from = (
-            configured_start
-            if last_observed is None or last_observed < configured_start
-            else last_observed + history_delta
-        )
+        if last_observed is None or last_observed < configured_start:
+            start_from = configured_start
+        elif self._is_daily_interval(backfill_interval):
+            exchange_tz = ZoneInfo(str(spec.extra.get("exchange_timezone", self.default_exchange_timezone)))
+            next_reference_date = last_observed.astimezone(exchange_tz).date() + timedelta(days=1)
+            start_from = datetime.combine(next_reference_date, time.min, tzinfo=exchange_tz)
+        else:
+            start_from = last_observed
         if start_from.tzinfo is None:
             start_from = start_from.replace(tzinfo=timezone.utc)
 
@@ -260,20 +318,6 @@ class TradingViewAdapter(BaseAdapter):
                 await self._send_tradingview_messages(
                     writer,
                     [("request_more_data", [chart_session, series_ref, page_size])],
-                )
-
-            if (
-                bool(extra.get("require_full_backfill", True))
-                and bars_by_time
-                and min(bars_by_time)
-                > start_from + self._backfill_interval_to_timedelta(backfill_interval, interval_minutes)
-            ):
-                earliest = min(bars_by_time)
-                raise AdapterError(
-                    "TradingView history did not reach configured start_date for "
-                    f"{ticker}: earliest={earliest.isoformat()}, start_date={start_from.isoformat()}. "
-                    "Increase the history interval, or set scrape.extra.require_full_backfill=false "
-                    "to allow partial history."
                 )
 
             return [
@@ -618,6 +662,201 @@ class TradingViewAdapter(BaseAdapter):
             return Decimal(str(candidate))
         except InvalidOperation as exc:
             raise AdapterError(f"invalid TradingView close price: {candidate}") from exc
+
+    async def _fetch_symbol_page_status(
+        self,
+        client: httpx.AsyncClient,
+        url: str,
+        headers: dict[str, str],
+        params: dict[str, Any] | None,
+        max_retries: int,
+        retry_delay_seconds: float,
+    ) -> httpx.Response:
+        page_headers = {
+            **headers,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        }
+        response = await self._request_with_retries(
+            client,
+            url,
+            headers=page_headers,
+            params=params,
+            max_retries=max_retries,
+            retry_delay_seconds=retry_delay_seconds,
+        )
+        response.raise_for_status()
+        return response
+
+    @staticmethod
+    def _extract_market_status(html: str) -> str | None:
+        normalized = re.sub(r"\s+", " ", html).casefold()
+        if re.search(r"\bmarket\s+(?:is\s+)?closed\b", normalized):
+            return "closed"
+        if re.search(r"\bmarket\s+(?:is\s+)?open\b", normalized):
+            return "open"
+        return None
+
+    def _to_table_observations(
+        self,
+        observations: list[RawObservationIn],
+        interval_minutes: int,
+        extra: dict[str, Any],
+        *,
+        compress_equal_runs: bool,
+    ) -> list[ObservationIn]:
+        table_observations: list[ObservationIn] = []
+        exchange_tz = ZoneInfo(str(extra.get("exchange_timezone", self.default_exchange_timezone)))
+        loaded_at = datetime.now(timezone.utc)
+        for observation in observations:
+            if observation.value_numeric is None:
+                continue
+            reference_date, reference_start, reference_end, published_at = self._observation_period(
+                observation,
+                interval_minutes,
+                exchange_tz,
+                extra,
+            )
+            if published_at > loaded_at:
+                continue
+            table_observations.append(
+                ObservationIn(
+                    series_code=observation.series_code,
+                    source_code=observation.source_code,
+                    reference_date=reference_date,
+                    reference_start=reference_start,
+                    reference_end=reference_end,
+                    value=observation.value_numeric,
+                    published_at=published_at,
+                    compress_equal_runs=compress_equal_runs,
+                )
+            )
+        return table_observations
+
+    def _observation_period(
+        self,
+        observation: RawObservationIn,
+        interval_minutes: int,
+        exchange_tz: ZoneInfo,
+        extra: dict[str, Any],
+    ) -> tuple[date, datetime, datetime, datetime]:
+        interval = self._observation_interval(observation)
+        if self._is_daily_interval(interval):
+            reference_date = observation.observed_at.astimezone(exchange_tz).date()
+            published_at = datetime.combine(
+                reference_date,
+                self._daily_session_close(extra),
+                tzinfo=exchange_tz,
+            )
+            return reference_date, published_at, published_at, published_at
+
+        reference_delta = self._observation_reference_delta(observation, interval_minutes)
+        if interval is None:
+            published_at = observation.publication_at or observation.observed_at
+            reference_date = published_at.astimezone(exchange_tz).date()
+            return reference_date, published_at, published_at, published_at
+
+        published_at = observation.publication_at or observation.observed_at + reference_delta
+        reference_date = published_at.astimezone(exchange_tz).date()
+        return reference_date, published_at, published_at, published_at
+
+    @staticmethod
+    def _observation_interval(observation: RawObservationIn) -> str | None:
+        raw_payload = observation.raw_payload or {}
+        interval = raw_payload.get("interval")
+        return str(interval) if interval is not None else None
+
+    @staticmethod
+    def _is_daily_interval(interval: str | None) -> bool:
+        if interval is None:
+            return False
+        normalized = interval.strip().lower()
+        return normalized in {"d", "1d"}
+
+    def _daily_session_close(self, extra: dict[str, Any]) -> time:
+        return self._parse_time_config(
+            extra,
+            "daily_session_close_time",
+            self.default_daily_session_close,
+        )
+
+    def _trading_session_open(self, extra: dict[str, Any]) -> time:
+        return self._parse_time_config(
+            extra,
+            "trading_session_open_time",
+            self.default_trading_session_open,
+        )
+
+    def _is_trading_session_time(self, value: datetime, extra: dict[str, Any]) -> bool:
+        exchange_tz = ZoneInfo(str(extra.get("exchange_timezone", self.default_exchange_timezone)))
+        local_value = value.astimezone(exchange_tz)
+        if not self._is_trading_session_weekday(local_value, extra):
+            return False
+        local_time = local_value.time()
+        session_open = self._trading_session_open(extra)
+        session_close = self._daily_session_close(extra)
+        if session_open == session_close:
+            return True
+        if session_open <= session_close:
+            return session_open <= local_time <= session_close
+        return local_time >= session_open or local_time <= session_close
+
+    @staticmethod
+    def _is_trading_session_weekday(local_value: datetime, extra: dict[str, Any]) -> bool:
+        raw_days = extra.get("trading_session_weekdays")
+        if raw_days is None:
+            return True
+        if isinstance(raw_days, str):
+            days = [part.strip().lower() for part in raw_days.split(",")]
+        else:
+            days = [str(part).strip().lower() for part in raw_days]
+        aliases = {
+            "mon": 0,
+            "monday": 0,
+            "tue": 1,
+            "tuesday": 1,
+            "wed": 2,
+            "wednesday": 2,
+            "thu": 3,
+            "thursday": 3,
+            "fri": 4,
+            "friday": 4,
+            "sat": 5,
+            "saturday": 5,
+            "sun": 6,
+            "sunday": 6,
+        }
+        allowed: set[int] = set()
+        for day in days:
+            if day in aliases:
+                allowed.add(aliases[day])
+            elif day:
+                allowed.add(int(day))
+        return local_value.weekday() in allowed
+
+    @staticmethod
+    def _parse_time_config(extra: dict[str, Any], key: str, default: time) -> time:
+        raw_value = extra.get(key)
+        if raw_value is None:
+            return default
+        try:
+            hour, minute = str(raw_value).split(":", maxsplit=1)
+            return time(hour=int(hour), minute=int(minute))
+        except ValueError as exc:
+            raise AdapterError(f"invalid {key}: {raw_value}") from exc
+
+    def _observation_reference_delta(
+        self,
+        observation: RawObservationIn,
+        interval_minutes: int,
+    ) -> timedelta:
+        interval = self._observation_interval(observation)
+        if interval is not None:
+            return self._backfill_interval_to_timedelta(interval, interval_minutes)
+        raw_payload = observation.raw_payload or {}
+        payload_interval_minutes = raw_payload.get("interval_minutes")
+        if payload_interval_minutes is not None:
+            return timedelta(minutes=max(1, int(payload_interval_minutes)))
+        return timedelta(minutes=max(1, interval_minutes))
 
     def _extract_price(self, html: str) -> Decimal:
         ld_json = re.search(r'<script[^>]+type="application/ld\+json"[^>]*>(.*?)</script>', html, re.S)

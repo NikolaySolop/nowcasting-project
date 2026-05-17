@@ -3,15 +3,17 @@ from __future__ import annotations
 import asyncio
 import random
 import re
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import httpx
 from bs4 import BeautifulSoup
 
 from ingestion.adapters.base import AdapterError, BaseAdapter, FetchContext, FetchResult
-from ingestion.schemas.observations import ObservationKind, RawObservationIn
+from ingestion.schemas.observations import ObservationIn, ObservationKind, RawObservationIn
+from ingestion.services.isdayoff import IsDayOffClient, IsDayOffError
 
 
 class ExchangeRatesAdapter(BaseAdapter):
@@ -19,6 +21,9 @@ class ExchangeRatesAdapter(BaseAdapter):
     ajax_url = "https://www.exchangerates.org.uk/ajax-commodities-charts-24-48.php"
     history_url = "https://www.exchangerates.org.uk/commodities/URALS-USD-history.html"
     referer = "https://www.exchangerates.org.uk/commodities/live-urals-crude-oil-prices/URALS-USD.html"
+    default_exchange_timezone = "Europe/Moscow"
+    default_trading_session_open = time(hour=10, minute=0)
+    default_daily_session_close = time(hour=18, minute=45)
 
     async def fetch(self, context: FetchContext) -> FetchResult:
         spec = context.source.scrape
@@ -125,11 +130,14 @@ class ExchangeRatesAdapter(BaseAdapter):
         per_page = int(extra.get("per") or extra.get("per_page") or 90)
         delay_min_seconds = max(4.5, float(extra.get("history_delay_min_seconds", extra.get("history_request_delay_seconds", 4.5))))
         delay_max_seconds = max(delay_min_seconds, float(extra.get("history_delay_max_seconds", delay_min_seconds + 4.0)))
+        store_in_observations = bool(extra.get("store_in_observations", False))
+        loaded_at = datetime.now(timezone.utc)
         request_summaries: list[dict[str, Any]] = []
         all_rows: list[dict[str, Any]] = []
         persisted_loaded_count = 0
         persisted_duplicate_count = 0
-        streamed = context.observation_sink is not None
+        streamed = context.observation_sink is not None and not store_in_observations
+        session_state: dict[str, str] = {}
 
         async with httpx.AsyncClient(timeout=context.settings.request_timeout_seconds, follow_redirects=True) as client:
             for window_start, window_end in self._date_windows(start_date.date(), end_date, max_range_years):
@@ -143,6 +151,7 @@ class ExchangeRatesAdapter(BaseAdapter):
                         window_end=window_end,
                         page=page,
                         per_page=per_page,
+                        session_state=session_state,
                     )
                     request_summaries.append(summary)
                     rows = self._parse_history_json_rows(payload, pair=pair)
@@ -169,23 +178,44 @@ class ExchangeRatesAdapter(BaseAdapter):
 
         rows_by_date = {row["date"]: row for row in all_rows}
         rows = [rows_by_date[observed_at] for observed_at in sorted(rows_by_date)]
-        observations = [] if streamed else self._history_rows_to_observations(
-            [row for row in rows if start_date is None or row["date"] >= start_date],
-            source_code=context.source.source_code,
-            series_code=series_code,
+        filtered_rows = [row for row in rows if start_date is None or row["date"] >= start_date]
+        observations = (
+            []
+            if streamed or store_in_observations
+            else self._history_rows_to_observations(
+                filtered_rows,
+                source_code=context.source.source_code,
+                series_code=series_code,
+            )
+        )
+        table_observations = (
+            self._history_rows_to_table_observations(
+                filtered_rows,
+                source_code=context.source.source_code,
+                series_code=series_code,
+                loaded_at=loaded_at,
+            )
+            if store_in_observations
+            else []
         )
 
-        if not observations and not streamed:
+        if not observations and not table_observations and not streamed:
             raise AdapterError("ExchangeRates daily history returned no close prices for configured date range")
 
         return FetchResult(
-            observations=observations,
+            observations=[] if store_in_observations else observations,
+            table_observations=table_observations,
+            loaded_at=loaded_at,
             persisted_loaded_count=persisted_loaded_count,
             persisted_duplicate_count=persisted_duplicate_count,
             raw_payload={
                 "mode": "history_daily",
                 "row_count": len(rows),
-                "observation_count": len(observations) if not streamed else persisted_loaded_count,
+                "observation_count": (
+                    len(table_observations)
+                    if store_in_observations
+                    else len(observations) if not streamed else persisted_loaded_count
+                ),
                 "duplicate_count": persisted_duplicate_count,
                 "start_date": start_date.isoformat() if start_date else None,
                 "end_date": end_date.isoformat(),
@@ -203,6 +233,7 @@ class ExchangeRatesAdapter(BaseAdapter):
         window_end: date,
         page: int,
         per_page: int,
+        session_state: dict[str, str],
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         spec = context.source.scrape
         if spec is None:
@@ -225,32 +256,54 @@ class ExchangeRatesAdapter(BaseAdapter):
                 per_param: str(per_page),
             }
         )
-        nonce = str(extra.get("nonce") or context.settings.exchangerates_ajax_nonce or "")
-        if not nonce:
-            raise AdapterError("ExchangeRates daily history requires scrape.extra.nonce or EXCHANGERATES_AJAX_NONCE")
-        if nonce:
-            params["nonce"] = nonce
-
-        headers = self._page_headers(context, accept="application/json")
-        headers["X-Requested-With"] = "XMLHttpRequest"
-        headers["Origin"] = "https://www.exchangerates.org.uk"
-        headers["X-Ajax-Nonce"] = nonce
+        nonce = str(session_state.get("nonce") or extra.get("nonce") or context.settings.exchangerates_ajax_nonce or "")
+        session_cookie = session_state.get("cookie")
         method = spec.method.upper()
         if method == "GET" and bool(extra.get("history_post", True)):
             method = "POST"
 
-        request_kwargs: dict[str, Any] = {
-            "headers": headers,
-            "params": params if method == "GET" else None,
-        }
-        if method == "POST":
-            encoding = str(extra.get("history_form_encoding") or "multipart")
-            if encoding == "multipart":
-                request_kwargs["files"] = {key: (None, str(value)) for key, value in params.items()}
-            else:
-                request_kwargs["data"] = params
+        session_refreshed = False
+        if (bool(extra.get("history_refresh_session_before_request", True)) and not session_state) or not nonce:
+            refreshed_nonce, refreshed_cookie = await self._refresh_history_session(client, context=context, url=url)
+            session_refreshed = True
+            if refreshed_nonce:
+                nonce = refreshed_nonce
+                session_state["nonce"] = refreshed_nonce
+            if refreshed_cookie:
+                session_cookie = refreshed_cookie
+                session_state["cookie"] = refreshed_cookie
+
+        if not nonce:
+            raise AdapterError(
+                "ExchangeRates daily history requires a nonce. Configure EXCHANGERATES_AJAX_NONCE "
+                "or allow the adapter to refresh the page session."
+            )
+
+        def build_request_kwargs() -> dict[str, Any]:
+            request_params = dict(params)
+            request_params["nonce"] = nonce
+            headers = self._page_headers(context, accept="application/json")
+            headers["X-Requested-With"] = "XMLHttpRequest"
+            headers["Origin"] = "https://www.exchangerates.org.uk"
+            headers["X-Ajax-Nonce"] = nonce
+            if session_cookie:
+                headers["Cookie"] = session_cookie
+
+            kwargs: dict[str, Any] = {
+                "headers": headers,
+                "params": request_params if method == "GET" else None,
+            }
+            if method == "POST":
+                encoding = str(extra.get("history_form_encoding") or "multipart")
+                if encoding == "multipart":
+                    kwargs["files"] = {key: (None, str(value)) for key, value in request_params.items()}
+                else:
+                    kwargs["data"] = request_params
+            return kwargs
 
         response: httpx.Response | None = None
+        request_kwargs = build_request_kwargs()
+        refresh_on_403 = bool(extra.get("history_refresh_session_on_403", True))
         for attempt in range(1, page_retries + 1):
             response = await client.request(
                 method,
@@ -259,6 +312,17 @@ class ExchangeRatesAdapter(BaseAdapter):
             )
             if response.status_code != 403:
                 break
+            if refresh_on_403 and not session_refreshed:
+                refreshed_nonce, refreshed_cookie = await self._refresh_history_session(client, context=context, url=url)
+                session_refreshed = True
+                if refreshed_nonce:
+                    nonce = refreshed_nonce
+                    session_state["nonce"] = refreshed_nonce
+                if refreshed_cookie:
+                    session_cookie = refreshed_cookie
+                    session_state["cookie"] = refreshed_cookie
+                request_kwargs = build_request_kwargs()
+                continue
             if attempt < page_retries:
                 await asyncio.sleep(retry_delay_seconds * attempt)
 
@@ -286,7 +350,47 @@ class ExchangeRatesAdapter(BaseAdapter):
             "rows": len(payload.get("rows", [])) if isinstance(payload.get("rows"), list) else None,
             "pages": payload.get("pages"),
             "clamped": payload.get("clamped"),
+            "session_refreshed": session_refreshed,
         }
+
+    async def _refresh_history_session(
+        self,
+        client: httpx.AsyncClient,
+        *,
+        context: FetchContext,
+        url: str,
+    ) -> tuple[str | None, str | None]:
+        spec = context.source.scrape
+        if spec is None:
+            raise AdapterError(f"source {context.source.source_code} has no ExchangeRates scrape spec")
+
+        extra = spec.extra
+        headers = self._page_headers(context, accept="text/html")
+        if not bool(extra.get("history_refresh_uses_configured_cookie", False)):
+            headers.pop("Cookie", None)
+        response = await client.get(url, headers=headers)
+        self._raise_for_blocked_response(response, "ExchangeRates history session refresh")
+
+        nonce = self._extract_ajax_nonce(response.text)
+        cookie = self._cookie_header_from_client(client, url)
+        return nonce, cookie
+
+    @staticmethod
+    def _extract_ajax_nonce(html: str) -> str | None:
+        patterns = (
+            r"(?:nonce|ajaxNonce|ajax_nonce|xAjaxNonce|x_ajax_nonce)['\"\s:=]+([a-fA-F0-9]{16,64})",
+            r"\b([a-fA-F0-9]{32})\b",
+        )
+        for pattern in patterns:
+            match = re.search(pattern, html)
+            if match:
+                return match.group(1)
+        return None
+
+    @staticmethod
+    def _cookie_header_from_client(client: httpx.AsyncClient, url: str) -> str | None:
+        cookie_header = client.build_request("GET", url).headers.get("cookie")
+        return str(cookie_header) if cookie_header else None
 
     async def _fetch_live_html(self, context: FetchContext) -> FetchResult:
         spec = context.source.scrape
@@ -297,40 +401,143 @@ class ExchangeRatesAdapter(BaseAdapter):
         series_code = str(spec.series_code or extra.get("series_code") or "EXCHANGERATES:URALSUSD:LIVE")
         interval_minutes = int(extra.get("interval_minutes", 15))
         url = str(spec.url or extra.get("live_url") or self.referer)
+        fetched_at = datetime.now(timezone.utc)
+        store_in_observations = bool(extra.get("store_in_observations", False))
+        allowed, gate_payload = await self._live_capture_gate(fetched_at, context)
+        if not allowed:
+            return FetchResult(
+                observations=[],
+                table_observations=[],
+                loaded_at=fetched_at,
+                raw_payload={
+                    "mode": "live_html",
+                    "skipped": True,
+                    **gate_payload,
+                },
+            )
+
         headers = self._page_headers(context, accept="text/html")
+        if bool(extra.get("live_refresh_session_before_request", True)):
+            headers.pop("Cookie", None)
 
         async with httpx.AsyncClient(timeout=context.settings.request_timeout_seconds, follow_redirects=True) as client:
             response = await client.get(url, headers=headers, params=spec.params)
+            if response.status_code == 403 and bool(extra.get("live_refresh_session_on_403", True)):
+                headers.pop("Cookie", None)
+                response = await client.get(url, headers=headers, params=spec.params)
 
         self._raise_for_blocked_response(response, "ExchangeRates live page")
         price, parsed_at = self._parse_live_html(response.text)
-        observed_at = self._round_time(parsed_at or datetime.now(timezone.utc), interval_minutes)
+        observed_at = self._round_time(fetched_at, interval_minutes)
+        last_observed = context.latest_observed_at_by_series.get(series_code)
+        if last_observed is not None and observed_at <= last_observed:
+            return FetchResult(
+                observations=[],
+                table_observations=[],
+                loaded_at=fetched_at,
+                raw_payload={
+                    "mode": "live_html",
+                    "skipped": True,
+                    "skip_reason": "already_loaded",
+                    "observed_at": observed_at.isoformat(),
+                    "latest_observed_at": last_observed.isoformat(),
+                },
+            )
+
+        raw_observation = RawObservationIn(
+            series_code=series_code,
+            source_code=context.source.source_code,
+            observed_at=observed_at,
+            value_numeric=price,
+            publication_at=fetched_at,
+            kind=ObservationKind.QUOTE,
+            raw_payload={
+                "source": "exchangerates",
+                "mode": "live_html",
+                "url": str(response.url),
+                "price": str(price),
+                "parsed_at": parsed_at.isoformat() if parsed_at else None,
+                "fetched_at": fetched_at.isoformat(),
+                "interval_minutes": interval_minutes,
+            },
+        )
 
         return FetchResult(
-            observations=[
-                RawObservationIn(
-                    series_code=series_code,
-                    source_code=context.source.source_code,
-                    observed_at=observed_at,
-                    value_numeric=price,
-                    kind=ObservationKind.QUOTE,
-                    raw_payload={
-                        "source": "exchangerates",
-                        "mode": "live_html",
-                        "url": str(response.url),
-                        "price": str(price),
-                        "parsed_at": parsed_at.isoformat() if parsed_at else None,
-                        "interval_minutes": interval_minutes,
-                    },
-                )
-            ],
+            observations=[] if store_in_observations else [raw_observation],
+            table_observations=(
+                [
+                    self._live_observation_to_table(
+                        raw_observation,
+                        interval_minutes=interval_minutes,
+                        extra=extra,
+                    )
+                ]
+                if store_in_observations
+                else []
+            ),
+            loaded_at=fetched_at,
             raw_payload={
                 "url": str(response.url),
                 "status_code": response.status_code,
                 "mode": "live_html",
                 "observed_at": observed_at.isoformat(),
+                "published_at": fetched_at.isoformat(),
+                **gate_payload,
             },
         )
+
+    async def _live_capture_gate(
+        self,
+        fetched_at: datetime,
+        context: FetchContext,
+    ) -> tuple[bool, dict[str, Any]]:
+        spec = context.source.scrape
+        extra = spec.extra if spec is not None else {}
+        exchange_tz = ZoneInfo(str(extra.get("exchange_timezone", self.default_exchange_timezone)))
+        local_value = fetched_at.astimezone(exchange_tz)
+
+        if not self._is_trading_session_time(local_value, extra):
+            return False, {
+                "skip_reason": "outside_trading_session",
+                "exchange_timezone": str(exchange_tz),
+                "local_time": local_value.isoformat(),
+            }
+
+        if bool(extra.get("russian_business_day_only", False)):
+            calendar_client = IsDayOffClient(timeout_seconds=context.settings.request_timeout_seconds)
+            try:
+                day_type = await calendar_client.get_day_type(
+                    local_value.date(),
+                    country_code=str(extra.get("business_day_country_code") or "ru"),
+                    include_short_days=bool(extra.get("business_day_include_short_days", True)),
+                    six_day_week=bool(extra.get("business_day_six_day_week", False)),
+                )
+            except (IsDayOffError, httpx.HTTPError):
+                if bool(extra.get("business_day_fail_closed", True)):
+                    return False, {
+                        "skip_reason": "business_calendar_unavailable",
+                        "exchange_timezone": str(exchange_tz),
+                        "local_date": local_value.date().isoformat(),
+                    }
+                raise
+
+            if not day_type.is_working_day:
+                return False, {
+                    "skip_reason": "non_working_day_ru",
+                    "exchange_timezone": str(exchange_tz),
+                    "local_date": local_value.date().isoformat(),
+                    "isdayoff_code": day_type.code,
+                }
+            return True, {
+                "exchange_timezone": str(exchange_tz),
+                "local_date": local_value.date().isoformat(),
+                "isdayoff_code": day_type.code,
+            }
+
+        return True, {
+            "exchange_timezone": str(exchange_tz),
+            "local_date": local_value.date().isoformat(),
+        }
 
     def _points_to_observations(
         self,
@@ -546,6 +753,123 @@ class ExchangeRatesAdapter(BaseAdapter):
             )
             for row in rows
         ]
+
+    def _history_rows_to_table_observations(
+        self,
+        rows: list[dict[str, Any]],
+        *,
+        source_code: str,
+        series_code: str,
+        loaded_at: datetime,
+    ) -> list[ObservationIn]:
+        observations: list[ObservationIn] = []
+        for row in rows:
+            reference_start = row["date"].replace(hour=0, minute=0, second=0, microsecond=0)
+            reference_end = reference_start + timedelta(days=1) - timedelta(microseconds=1)
+            if reference_end > loaded_at:
+                continue
+            observations.append(
+                ObservationIn(
+                    series_code=series_code,
+                    source_code=source_code,
+                    reference_date=reference_start.date(),
+                    reference_start=reference_start,
+                    reference_end=reference_end,
+                    value=row["close"],
+                    published_at=reference_end,
+                )
+            )
+        return observations
+
+    def _live_observation_to_table(
+        self,
+        observation: RawObservationIn,
+        *,
+        interval_minutes: int,
+        extra: dict[str, Any],
+    ) -> ObservationIn:
+        exchange_tz = ZoneInfo(str(extra.get("exchange_timezone", self.default_exchange_timezone)))
+        reference_start = observation.observed_at
+        reference_end = reference_start + timedelta(minutes=max(1, interval_minutes)) - timedelta(microseconds=1)
+        published_at = observation.publication_at or datetime.now(timezone.utc)
+        return ObservationIn(
+            series_code=observation.series_code,
+            source_code=observation.source_code,
+            reference_date=reference_start.astimezone(exchange_tz).date(),
+            reference_start=reference_start,
+            reference_end=reference_end,
+            value=observation.value_numeric,
+            published_at=published_at,
+            compress_equal_runs=bool(extra.get("compress_equal_runs", False)),
+        )
+
+    def _is_trading_session_time(self, local_value: datetime, extra: dict[str, Any]) -> bool:
+        if not self._is_trading_session_weekday(local_value, extra):
+            return False
+        local_time = local_value.time()
+        session_open = self._trading_session_open(extra)
+        session_close = self._daily_session_close(extra)
+        if session_open <= session_close:
+            return session_open <= local_time <= session_close
+        return local_time >= session_open or local_time <= session_close
+
+    def _trading_session_open(self, extra: dict[str, Any]) -> time:
+        return self._parse_time_config(
+            extra,
+            "trading_session_open_time",
+            self.default_trading_session_open,
+        )
+
+    def _daily_session_close(self, extra: dict[str, Any]) -> time:
+        return self._parse_time_config(
+            extra,
+            "daily_session_close_time",
+            self.default_daily_session_close,
+        )
+
+    @staticmethod
+    def _is_trading_session_weekday(local_value: datetime, extra: dict[str, Any]) -> bool:
+        raw_days = extra.get("trading_session_weekdays")
+        if raw_days is None:
+            return True
+        if isinstance(raw_days, str):
+            days = [part.strip().lower() for part in raw_days.split(",")]
+        else:
+            days = [str(part).strip().lower() for part in raw_days]
+        aliases = {
+            "mon": 0,
+            "monday": 0,
+            "tue": 1,
+            "tuesday": 1,
+            "wed": 2,
+            "wednesday": 2,
+            "thu": 3,
+            "thursday": 3,
+            "fri": 4,
+            "friday": 4,
+            "sat": 5,
+            "saturday": 5,
+            "sun": 6,
+            "sunday": 6,
+        }
+        allowed: set[int] = set()
+        for day in days:
+            if day in aliases:
+                allowed.add(aliases[day])
+            elif day:
+                allowed.add(int(day))
+        return local_value.weekday() in allowed
+
+    @staticmethod
+    def _parse_time_config(extra: dict[str, Any], key: str, default: time) -> time:
+        raw_value = extra.get(key)
+        if raw_value is None:
+            return default
+        try:
+            hour, minute = str(raw_value).split(":", maxsplit=1)
+            return time(hour=int(hour), minute=int(minute))
+        except ValueError as exc:
+            raise AdapterError(f"invalid {key}: {raw_value}") from exc
 
     @staticmethod
     async def _sleep_between_history_requests(delay_min_seconds: float, delay_max_seconds: float) -> None:

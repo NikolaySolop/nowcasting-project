@@ -13,8 +13,8 @@ from ingestion.adapters.manual_csv import ManualCsvAdapter
 from ingestion.adapters.minfin_oilgas import MinfinOilGasAdapter
 from ingestion.adapters.tradingview import TradingViewAdapter
 from ingestion.adapters.moex import MoexAdapter
-from ingestion.adapters.rosstat_industrial import RosstatIndustrialAdapter
-from ingestion.adapters.rosstat_retail_sales import RosstatRetailSalesAdapter
+from ingestion.adapters.rosstat_cpi_live import RosstatCpiLiveAdapter, RosstatIndustrialProducerCpiLiveAdapter
+from ingestion.adapters.rosstat_retail_sales import RosstatRetailMomLiveAdapter
 from ingestion.adapters.ru_tax_dummy_calendar import RuTaxDummyCalendarAdapter
 from ingestion.adapters.web import WebPageAdapter
 from ingestion.adapters.yahoo import YahooAdapter
@@ -41,8 +41,9 @@ class SourceRegistry:
         self.register_adapter(YahooAdapter.name, YahooAdapter)
         self.register_adapter(ManualCsvAdapter.name, ManualCsvAdapter)
         self.register_adapter(MinfinOilGasAdapter.name, MinfinOilGasAdapter)
-        self.register_adapter(RosstatIndustrialAdapter.name, RosstatIndustrialAdapter)
-        self.register_adapter(RosstatRetailSalesAdapter.name, RosstatRetailSalesAdapter)
+        self.register_adapter(RosstatCpiLiveAdapter.name, RosstatCpiLiveAdapter)
+        self.register_adapter(RosstatIndustrialProducerCpiLiveAdapter.name, RosstatIndustrialProducerCpiLiveAdapter)
+        self.register_adapter(RosstatRetailMomLiveAdapter.name, RosstatRetailMomLiveAdapter)
         self.register_adapter(RuTaxDummyCalendarAdapter.name, RuTaxDummyCalendarAdapter)
         self.register_adapter(TradingViewAdapter.name, TradingViewAdapter)
 
@@ -56,6 +57,20 @@ class SourceRegistry:
         try:
             return self._sources[source_code]
         except KeyError as exc:
+            matches = [
+                source
+                for source in self._sources.values()
+                if (
+                    source.scrape is not None
+                    and source.scrape.series_code == source_code
+                    or any(series.series_code == source_code for series in source.series)
+                )
+            ]
+            if len(matches) == 1:
+                return matches[0]
+            if len(matches) > 1:
+                matched_codes = ", ".join(source.source_code for source in matches)
+                raise KeyError(f"series_code is ambiguous: {source_code} matches {matched_codes}") from exc
             raise KeyError(f"source is not registered: {source_code}") from exc
 
     def list_sources(self, *, enabled_only: bool = False) -> list[SourceDefinition]:
