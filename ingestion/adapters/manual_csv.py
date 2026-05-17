@@ -5,7 +5,7 @@ from decimal import Decimal, InvalidOperation
 import httpx
 
 from ingestion.adapters.base import AdapterError, BaseAdapter, FetchContext, FetchResult
-from ingestion.schemas.observations import ObservationIn, RawObservationIn
+from ingestion.schemas.observations import ObservationIn, ParsedObservation
 
 
 class ManualCsvAdapter(BaseAdapter):
@@ -28,7 +28,7 @@ class ManualCsvAdapter(BaseAdapter):
 
         reader = csv.DictReader(content.splitlines(), delimiter=spec.delimiter)
         store_in_observations = bool(spec.store_in_observations)
-        observations: list[RawObservationIn] = []
+        observations: list[ParsedObservation] = []
         table_observations: list[ObservationIn] = []
         for row in reader:
             series_code = row.get(spec.series_code_column) if spec.series_code_column else spec.series_code
@@ -58,7 +58,7 @@ class ManualCsvAdapter(BaseAdapter):
                 )
             else:
                 observations.append(
-                    RawObservationIn(
+                    ParsedObservation(
                         series_code=series_code,
                         source_code=context.source.source_code,
                         observed_at=observed_at,

@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ingestion.schemas.exports import CsvExportFile, CsvExportResult
-from storage.models.raw_obsevations import RawObservation
+from storage.models.observations import Observation
 from storage.models.series import Series
 from storage.models.source import DataSource
 
@@ -66,19 +66,15 @@ class CsvExportService:
                 Series.series_code,
                 Series.series_name,
                 DataSource.source_code,
-                RawObservation.observed_at,
-                RawObservation.period_start,
-                RawObservation.period_end,
-                RawObservation.value_numeric,
-                RawObservation.value_text,
-                RawObservation.publication_at,
-                RawObservation.vintage_at,
-                RawObservation.is_revised,
-                RawObservation.is_final,
+                Observation.reference_date,
+                Observation.reference_start,
+                Observation.reference_end,
+                Observation.value,
+                Observation.published_at,
             )
-            .join(RawObservation, RawObservation.series_id == Series.id)
-            .join(DataSource, RawObservation.source_id == DataSource.id)
-            .order_by(Series.series_code, RawObservation.observed_at, RawObservation.publication_at)
+            .join(Observation, Observation.series_id == Series.id)
+            .join(DataSource, Observation.source_id == DataSource.id)
+            .order_by(Series.series_code, Observation.reference_start, Observation.published_at)
         )
         if series_codes:
             stmt = stmt.where(Series.series_code.in_(series_codes))
@@ -91,29 +87,21 @@ class CsvExportService:
                 "series_code": series_code,
                 "series_name": series_name,
                 "source_code": source_code,
-                "observed_at": self._format_datetime(observed_at),
-                "period_start": self._format_datetime(period_start),
-                "period_end": self._format_datetime(period_end),
-                "value_numeric": str(value_numeric) if value_numeric is not None else "",
-                "value_text": value_text or "",
-                "publication_at": self._format_datetime(publication_at),
-                "vintage_at": self._format_datetime(vintage_at),
-                "is_revised": is_revised,
-                "is_final": is_final,
+                "reference_date": reference_date.isoformat() if reference_date is not None else "",
+                "reference_start": self._format_datetime(reference_start),
+                "reference_end": self._format_datetime(reference_end),
+                "value": str(value),
+                "published_at": self._format_datetime(published_at),
             }
             for (
                 series_code,
                 series_name,
                 source_code,
-                observed_at,
-                period_start,
-                period_end,
-                value_numeric,
-                value_text,
-                publication_at,
-                vintage_at,
-                is_revised,
-                is_final,
+                reference_date,
+                reference_start,
+                reference_end,
+                value,
+                published_at,
             ) in result.all()
         ]
 
@@ -133,15 +121,11 @@ class CsvExportService:
             "series_code",
             "series_name",
             "source_code",
-            "observed_at",
-            "period_start",
-            "period_end",
-            "value_numeric",
-            "value_text",
-            "publication_at",
-            "vintage_at",
-            "is_revised",
-            "is_final",
+            "reference_date",
+            "reference_start",
+            "reference_end",
+            "value",
+            "published_at",
         ]
         with path.open("x", newline="", encoding="utf-8") as file:
             writer = csv.DictWriter(file, fieldnames=fieldnames)

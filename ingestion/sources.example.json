@@ -19,7 +19,10 @@
         "date_column": 0,
         "value_column": 1,
         "series_code": "EXAMPLE_SERIES",
-        "date_format": "%Y-%m-%d"
+        "date_format": "%Y-%m-%d",
+        "extra": {
+          "store_in_observations": true
+        }
       },
       "series": [
         {
@@ -294,6 +297,9 @@
           "series_code": "TVC:US10Y-US02Y",
           "series_name": "U.S. Treasury 10Y-2Y Yield Spread",
           "frequency": "15min",
+          "group_code": "global_usd_risk",
+          "subgroup_code": "us_rates",
+          "description": "U.S. Treasury 10Y minus 2Y yield spread, a market measure of the U.S. yield curve and global rate expectations.",
           "units": "percentage_points"
         }
       ]
@@ -726,6 +732,7 @@
         "extra": {
           "mode": "live_html",
           "interval_minutes": 15,
+          "backfill_frequency": "daily",
           "store_in_observations": true,
           "exchange_timezone": "Europe/Moscow",
           "trading_session_open_time": "10:00",
@@ -885,6 +892,7 @@
           "mode": "online_15m",
           "secid": "CNYRUB_TOM",
           "interval_minutes": 15,
+          "backfill_frequency": "15min",
           "store_in_observations": true,
           "require_trading_status_open": true,
           "open_trading_statuses": ["T"],
@@ -932,6 +940,9 @@
           "series_code": "MOEX:IMOEX",
           "series_name": "MOEX Russia Index, daily close",
           "frequency": "daily",
+          "group_code": "ru_market_risk",
+          "subgroup_code": "equity_index_daily",
+          "description": "MOEX Russia Index daily close, a broad Russian equity market and domestic risk sentiment factor.",
           "units": "index_points"
         }
       ],
@@ -954,6 +965,7 @@
           "mode": "online_15m",
           "secid": "IMOEX",
           "interval_minutes": 15,
+          "backfill_frequency": "15min",
           "store_in_observations": true,
           "require_trading_status_open": true,
           "trading_status_field": "TRADINGSESSION",
@@ -970,6 +982,9 @@
           "series_code": "MOEX:IMOEX:15M",
           "series_name": "MOEX Russia Index, 15m close aggregated from 1m candles",
           "frequency": "15min",
+          "group_code": "ru_market_risk",
+          "subgroup_code": "equity_index_intraday",
+          "description": "Intraday MOEX Russia Index, a timely Russian equity market and domestic risk sentiment factor.",
           "units": "index_points"
         }
       ],
@@ -1030,6 +1045,7 @@
           "secid": "RTSI",
           "board": "RTSI",
           "interval_minutes": 15,
+          "backfill_frequency": "15min",
           "store_in_observations": true,
           "require_trading_status_open": true,
           "trading_status_field": "TRADINGSESSION",
@@ -1394,24 +1410,36 @@
           "series_code": "CBR:BLIQUIDITY:STR_LI_DEF",
           "series_name": "CBR structural liquidity deficit/surplus",
           "frequency": "daily",
+          "group_code": "ru_rates",
+          "subgroup_code": "banking_liquidity",
+          "description": "Bank of Russia structural liquidity deficit or surplus, a core measure of banking system liquidity conditions.",
           "units": "billion RUB"
         },
         {
           "series_code": "CBR:BLIQUIDITY:STR_LI_DEF_NEW",
           "series_name": "CBR structural liquidity deficit/surplus, new methodology",
           "frequency": "daily",
+          "group_code": "ru_rates",
+          "subgroup_code": "banking_liquidity",
+          "description": "Bank of Russia structural liquidity deficit or surplus under the new methodology, tracking ruble liquidity conditions.",
           "units": "billion RUB"
         },
         {
           "series_code": "CBR:BLIQUIDITY:CORR_ACC",
           "series_name": "Credit institutions correspondent accounts with CBR",
           "frequency": "daily",
+          "group_code": "ru_rates",
+          "subgroup_code": "banking_liquidity",
+          "description": "Credit institutions correspondent account balances with the Bank of Russia, a direct banking liquidity indicator.",
           "units": "billion RUB"
         },
         {
           "series_code": "CBR:BLIQUIDITY:AVG_RR",
           "series_name": "Average required reserves",
           "frequency": "daily",
+          "group_code": "ru_rates",
+          "subgroup_code": "banking_liquidity",
+          "description": "Average required reserves of credit institutions, a banking liquidity and reserve requirement indicator.",
           "units": "billion RUB"
         }
       ],
@@ -1714,7 +1742,8 @@
         "path": "storage/exports/ru_tax_dummy_calendar_2015_2026.csv",
         "delimiter": ",",
         "date_column": "date",
-        "date_format": "%Y-%m-%d"
+        "date_format": "%Y-%m-%d",
+        "store_in_observations": true
       },
       "series": [
         {

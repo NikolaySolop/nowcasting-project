@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import httpx
 
 from ingestion.adapters.base import AdapterError, BaseAdapter, FetchContext, FetchResult
-from ingestion.schemas.observations import ObservationIn, ObservationKind, RawObservationIn
+from ingestion.schemas.observations import ObservationIn, ObservationKind, ParsedObservation
 
 
 class MoexAdapter(BaseAdapter):
@@ -67,7 +67,7 @@ class MoexAdapter(BaseAdapter):
         headers.update(spec.headers)
 
         store_in_observations = bool(extra.get("store_in_observations", False))
-        observations: list[RawObservationIn] = []
+        observations: list[ParsedObservation] = []
         table_observations: list[ObservationIn] = []
         loaded_at = datetime.now(timezone.utc)
         raw_payload: dict[str, Any] = {"mode": mode, "instruments": []}
@@ -95,7 +95,7 @@ class MoexAdapter(BaseAdapter):
 
                 if store_in_observations:
                     table_observations.extend(
-                        self._raw_observations_to_table(
+                        self._parsed_observations_to_table(
                             instrument_observations,
                             instrument=instrument,
                             loaded_at=loaded_at,
@@ -119,7 +119,7 @@ class MoexAdapter(BaseAdapter):
         context: FetchContext,
         instrument: dict[str, Any],
         headers: dict[str, str],
-    ) -> tuple[list[RawObservationIn], dict[str, Any]]:
+    ) -> tuple[list[ParsedObservation], dict[str, Any]]:
         spec = context.source.scrape
         if spec is None:
             return [], {}
@@ -163,7 +163,7 @@ class MoexAdapter(BaseAdapter):
         context: FetchContext,
         instrument: dict[str, Any],
         headers: dict[str, str],
-    ) -> tuple[list[RawObservationIn], dict[str, Any]]:
+    ) -> tuple[list[ParsedObservation], dict[str, Any]]:
         exchange_tz = self._exchange_timezone(instrument)
         interval_minutes = int(instrument.get("interval_minutes") or 15)
         if interval_minutes != 15:
@@ -322,8 +322,8 @@ class MoexAdapter(BaseAdapter):
         interval_minutes: int,
         exchange_tz: ZoneInfo,
         daily: bool,
-    ) -> list[RawObservationIn]:
-        observations: list[RawObservationIn] = []
+    ) -> list[ParsedObservation]:
+        observations: list[ParsedObservation] = []
         latest = context.latest_observed_at_by_series.get(instrument["series_code"])
 
         for row in rows:
@@ -345,7 +345,7 @@ class MoexAdapter(BaseAdapter):
                 continue
 
             observations.append(
-                RawObservationIn(
+                ParsedObservation(
                     series_code=instrument["series_code"],
                     source_code=context.source.source_code,
                     observed_at=observed_at,
@@ -428,9 +428,9 @@ class MoexAdapter(BaseAdapter):
         context: FetchContext,
         instrument: dict[str, Any],
         interval_minutes: int,
-    ) -> list[RawObservationIn]:
+    ) -> list[ParsedObservation]:
         latest = context.latest_observed_at_by_series.get(instrument["series_code"])
-        observations: list[RawObservationIn] = []
+        observations: list[ParsedObservation] = []
 
         for observed_at, bar in sorted(bars.items()):
             if latest is not None and observed_at <= latest:
@@ -443,7 +443,7 @@ class MoexAdapter(BaseAdapter):
                 instrument=instrument,
             )
             observations.append(
-                RawObservationIn(
+                ParsedObservation(
                     series_code=instrument["series_code"],
                     source_code=context.source.source_code,
                     observed_at=observed_at,
@@ -471,9 +471,9 @@ class MoexAdapter(BaseAdapter):
 
         return observations
 
-    def _raw_observations_to_table(
+    def _parsed_observations_to_table(
         self,
-        observations: list[RawObservationIn],
+        observations: list[ParsedObservation],
         *,
         instrument: dict[str, Any],
         loaded_at: datetime,
@@ -514,7 +514,7 @@ class MoexAdapter(BaseAdapter):
         return reference_end
 
     @staticmethod
-    def _is_daily_observation(observation: RawObservationIn) -> bool:
+    def _is_daily_observation(observation: ParsedObservation) -> bool:
         raw_payload = observation.raw_payload or {}
         try:
             return int(raw_payload.get("interval_minutes") or 0) >= 24 * 60
@@ -523,7 +523,7 @@ class MoexAdapter(BaseAdapter):
 
     def _daily_session_period(
         self,
-        observation: RawObservationIn,
+        observation: ParsedObservation,
         instrument: dict[str, Any],
     ) -> tuple[datetime, datetime]:
         exchange_tz = self._exchange_timezone(instrument)

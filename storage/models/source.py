@@ -1,5 +1,5 @@
 from sqlalchemy import Enum as SQLEnum, String
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 
 from storage.db.base import Base, UUIDMixin, TimestampMixin
 
@@ -28,8 +28,4 @@ class DataSource(UUIDMixin, TimestampMixin, Base):
             create_constraint=True,
         ),
         nullable=True,
-    )
-
-    observations: Mapped[list["RawObservation"]] = relationship(
-        back_populates="source"
     )

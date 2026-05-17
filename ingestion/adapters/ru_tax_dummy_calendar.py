@@ -9,7 +9,7 @@ from typing import Any
 import httpx
 
 from ingestion.adapters.base import AdapterError, BaseAdapter, FetchContext, FetchResult
-from ingestion.schemas.observations import ObservationKind, RawObservationIn
+from ingestion.schemas.observations import ObservationIn
 
 
 DEFAULT_VALUE_COLUMNS = {
@@ -88,34 +88,36 @@ class RuTaxDummyCalendarAdapter(BaseAdapter):
         if extra.get("enabled", True) and self._is_release_check_period(extra):
             await self._extend_csv_if_available(path, extra, context)
 
-        observations = self._read_observations(path, context)
-        return FetchResult(observations=observations)
+        table_observations = self._read_observations(path, context)
+        return FetchResult(observations=[], table_observations=table_observations)
 
-    def _read_observations(self, path: Path, context: FetchContext) -> list[RawObservationIn]:
+    def _read_observations(self, path: Path, context: FetchContext) -> list[ObservationIn]:
         if not path.exists():
             raise AdapterError(f"tax dummy calendar csv does not exist: {path}")
 
         value_columns = self._value_columns(context)
-        observations: list[RawObservationIn] = []
+        observations: list[ObservationIn] = []
         with path.open(encoding="utf-8-sig", newline="") as handle:
             reader = csv.DictReader(handle)
             for row in reader:
-                observed_at = self._date_to_datetime(date.fromisoformat(row["date"]))
+                reference_start = self._date_to_datetime(date.fromisoformat(row["date"]))
+                reference_end = reference_start + timedelta(days=1) - timedelta(microseconds=1)
                 for column, series_code in value_columns.items():
                     latest = context.latest_observed_at_by_series.get(series_code)
-                    if latest is not None and observed_at <= latest:
+                    if latest is not None and reference_start <= latest:
                         continue
                     value = self._parse_decimal(row.get(column, ""))
                     if value is None:
                         continue
                     observations.append(
-                        RawObservationIn(
+                        ObservationIn(
                             series_code=series_code,
                             source_code=context.source.source_code,
-                            observed_at=observed_at,
-                            value_numeric=value,
-                            kind=ObservationKind.CALENDAR,
-                            raw_payload={"column": column, **row},
+                            reference_date=reference_start.date(),
+                            reference_start=reference_start,
+                            reference_end=reference_end,
+                            value=value,
+                            published_at=reference_start,
                         )
                     )
         return observations

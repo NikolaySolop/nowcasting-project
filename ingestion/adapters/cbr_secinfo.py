@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from ingestion.adapters.base import AdapterError, BaseAdapter, FetchContext, FetchResult
-from ingestion.schemas.observations import ObservationIn, ObservationKind, RawObservationIn
+from ingestion.schemas.observations import ObservationIn, ObservationKind, ParsedObservation
 
 
 class CbrSecInfoAdapter(BaseAdapter):
@@ -54,7 +54,7 @@ class CbrSecInfoAdapter(BaseAdapter):
             )
 
         store_in_observations = bool(extra.get("store_in_observations", False))
-        observations: list[RawObservationIn] = []
+        observations: list[ParsedObservation] = []
         table_observations: list[ObservationIn] = []
         loaded_at = datetime.now(timezone.utc)
         request_summaries: list[dict[str, Any]] = []
@@ -117,7 +117,7 @@ class CbrSecInfoAdapter(BaseAdapter):
         params: dict[str, str],
         loaded_at: datetime,
         store_in_observations: bool,
-    ) -> tuple[list[RawObservationIn], list[ObservationIn], dict[str, Any]]:
+    ) -> tuple[list[ParsedObservation], list[ObservationIn], dict[str, Any]]:
         spec = context.source.scrape
         if spec is None:
             return [], [], {}
@@ -305,13 +305,13 @@ class CbrSecInfoAdapter(BaseAdapter):
             row[self._local_name(element.tag)] = element.text.strip()
         return row
 
-    def _rows_to_observations(self, context: FetchContext, rows: list[dict[str, Any]]) -> list[RawObservationIn]:
+    def _rows_to_observations(self, context: FetchContext, rows: list[dict[str, Any]]) -> list[ParsedObservation]:
         spec = context.source.scrape
         if spec is None:
             return []
 
         metrics = self._metrics(context)
-        observations: list[RawObservationIn] = []
+        observations: list[ParsedObservation] = []
         date_mode = str((spec.extra or {}).get("date_mode") or "calendar").lower()
         for row in rows:
             for metric in metrics:
@@ -338,7 +338,7 @@ class CbrSecInfoAdapter(BaseAdapter):
                     continue
 
                 observations.append(
-                    RawObservationIn(
+                    ParsedObservation(
                         series_code=series_code,
                         source_code=context.source.source_code,
                         observed_at=observed_at,

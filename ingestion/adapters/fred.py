@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from ingestion.adapters.base import AdapterError, BaseAdapter, FetchContext, FetchResult
-from ingestion.schemas.observations import ObservationIn, ObservationKind, RawObservationIn
+from ingestion.schemas.observations import ObservationIn, ObservationKind, ParsedObservation
 
 
 class FredAdapter(BaseAdapter):
@@ -122,7 +122,7 @@ class FredAdapter(BaseAdapter):
         context: FetchContext,
         rows: list[dict[str, Any]],
         fred_series_id: str,
-    ) -> list[RawObservationIn]:
+    ) -> list[ParsedObservation]:
         spec = context.source.scrape
         if spec is None:
             return []
@@ -130,14 +130,14 @@ class FredAdapter(BaseAdapter):
         target_series_code = spec.series_code or context.source.source_code
         latest_observed_at = context.latest_observed_at_by_series.get(target_series_code)
 
-        observations: list[RawObservationIn] = []
+        observations: list[ParsedObservation] = []
         for row in rows:
             observed_at = row["observed_at"]
             if latest_observed_at is not None and observed_at <= latest_observed_at:
                 continue
 
             observations.append(
-                RawObservationIn(
+                ParsedObservation(
                     series_code=target_series_code,
                     source_code=context.source.source_code,
                     observed_at=observed_at,

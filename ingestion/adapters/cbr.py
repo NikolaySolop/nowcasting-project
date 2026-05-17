@@ -14,7 +14,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from ingestion.adapters.base import AdapterError, BaseAdapter, FetchContext, FetchResult
-from ingestion.schemas.observations import ObservationIn, ObservationKind, RawObservationIn
+from ingestion.schemas.observations import ObservationIn, ObservationKind, ParsedObservation
 
 
 class CbrAdapter(BaseAdapter):
@@ -512,13 +512,13 @@ class CbrAdapter(BaseAdapter):
         context: FetchContext,
         rows: list[dict[str, Any]],
         series_code: str,
-    ) -> list[RawObservationIn]:
+    ) -> list[ParsedObservation]:
         spec = context.source.scrape
         if spec is None:
             return []
 
         latest = context.latest_observed_at_by_series.get(series_code)
-        observations: list[RawObservationIn] = []
+        observations: list[ParsedObservation] = []
         for row in sorted(rows, key=lambda item: item["date"]):
             observed_at = row["date"]
             if latest is not None and observed_at <= latest:
@@ -530,7 +530,7 @@ class CbrAdapter(BaseAdapter):
                 rate = Decimal("1") / rate
 
             observations.append(
-                RawObservationIn(
+                ParsedObservation(
                     series_code=series_code,
                     source_code=context.source.source_code,
                     observed_at=observed_at,
@@ -638,16 +638,16 @@ class CbrAdapter(BaseAdapter):
         context: FetchContext,
         rows: list[dict[str, Any]],
         series_code: str,
-    ) -> list[RawObservationIn]:
+    ) -> list[ParsedObservation]:
         latest = context.latest_observed_at_by_series.get(series_code)
-        observations: list[RawObservationIn] = []
+        observations: list[ParsedObservation] = []
         for row in sorted(rows, key=lambda item: item["date"]):
             observed_at = row["date"]
             if latest is not None and observed_at <= latest:
                 continue
 
             observations.append(
-                RawObservationIn(
+                ParsedObservation(
                     series_code=series_code,
                     source_code=context.source.source_code,
                     observed_at=observed_at,
@@ -752,19 +752,19 @@ class CbrAdapter(BaseAdapter):
         context: FetchContext,
         rows: list[dict[str, Any]],
         series_code: str,
-    ) -> list[RawObservationIn]:
+    ) -> list[ParsedObservation]:
         spec = context.source.scrape
         extra = spec.extra if spec is not None else {}
         event_type = str(extra.get("event_type") or "key_rate_meeting")
         latest = context.latest_observed_at_by_series.get(series_code)
-        observations: list[RawObservationIn] = []
+        observations: list[ParsedObservation] = []
         for row in sorted(rows, key=lambda item: item["date"]):
             observed_at = row["date"]
             if latest is not None and observed_at <= latest:
                 continue
 
             observations.append(
-                RawObservationIn(
+                ParsedObservation(
                     series_code=series_code,
                     source_code=context.source.source_code,
                     observed_at=observed_at,
@@ -875,8 +875,8 @@ class CbrAdapter(BaseAdapter):
         context: FetchContext,
         rows: list[dict[str, Any]],
         metrics: list[dict[str, Any]],
-    ) -> list[RawObservationIn]:
-        observations: list[RawObservationIn] = []
+    ) -> list[ParsedObservation]:
+        observations: list[ParsedObservation] = []
         for row in sorted(rows, key=lambda item: item["date"]):
             observed_at = row["date"]
             for metric in metrics:
@@ -891,7 +891,7 @@ class CbrAdapter(BaseAdapter):
                     continue
 
                 observations.append(
-                    RawObservationIn(
+                    ParsedObservation(
                         series_code=series_code,
                         source_code=context.source.source_code,
                         observed_at=observed_at,
@@ -980,10 +980,10 @@ class CbrAdapter(BaseAdapter):
         *,
         page_last_update: datetime | None,
         xlsx_last_modified: datetime | None,
-    ) -> list[RawObservationIn]:
+    ) -> list[ParsedObservation]:
         spec = context.source.scrape
         extra = spec.extra if spec is not None else {}
-        observations: list[RawObservationIn] = []
+        observations: list[ParsedObservation] = []
         for row in sorted(rows, key=lambda item: (item["date"], item["series_code"])):
             series_code = str(row["series_code"])
             observed_at = row["date"]
@@ -1000,7 +1000,7 @@ class CbrAdapter(BaseAdapter):
             )
             vintage_at = xlsx_last_modified or page_last_update or datetime.now(timezone.utc)
             observations.append(
-                RawObservationIn(
+                ParsedObservation(
                     series_code=series_code,
                     source_code=context.source.source_code,
                     observed_at=observed_at,
