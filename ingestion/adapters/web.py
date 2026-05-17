@@ -6,7 +6,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from ingestion.adapters.base import AdapterError, BaseAdapter, FetchContext, FetchResult
-from ingestion.schemas.observations import ObservationIn, ObservationKind, RawObservationIn
+from ingestion.schemas.observations import ObservationIn, ObservationKind, ParsedObservation
 
 
 class WebPageAdapter(BaseAdapter):
@@ -42,7 +42,7 @@ class WebPageAdapter(BaseAdapter):
                 table_observations = []
         else:
             observations = [
-                RawObservationIn(
+                ParsedObservation(
                     series_code=spec.series_code or context.source.source_code,
                     source_code=context.source.source_code,
                     observed_at=datetime.now().astimezone(),
@@ -63,7 +63,7 @@ class WebPageAdapter(BaseAdapter):
             },
         )
 
-    def _parse_html_table(self, context: FetchContext, html: str) -> list[RawObservationIn]:
+    def _parse_html_table(self, context: FetchContext, html: str) -> list[ParsedObservation]:
         spec = context.source.scrape
         if spec is None:
             return []
@@ -73,7 +73,7 @@ class WebPageAdapter(BaseAdapter):
         if table is None:
             raise AdapterError(f"table selector did not match: {spec.table_selector}")
 
-        observations: list[RawObservationIn] = []
+        observations: list[ParsedObservation] = []
         headers: list[str] = []
         for row in table.select(spec.row_selector):
             cells = [cell.get_text(" ", strip=True) for cell in row.select(spec.cell_selector)]
@@ -89,7 +89,7 @@ class WebPageAdapter(BaseAdapter):
             value_numeric = self._parse_decimal(self._cell(cells, headers, spec.value_column))
 
             observations.append(
-                RawObservationIn(
+                ParsedObservation(
                     series_code=spec.series_code or context.source.source_code,
                     source_code=context.source.source_code,
                     observed_at=observed_at,
@@ -102,7 +102,7 @@ class WebPageAdapter(BaseAdapter):
 
         return observations
 
-    def _parse_json(self, context: FetchContext, payload: Any) -> list[RawObservationIn]:
+    def _parse_json(self, context: FetchContext, payload: Any) -> list[ParsedObservation]:
         spec = context.source.scrape
         if spec is None:
             return []
@@ -116,7 +116,7 @@ class WebPageAdapter(BaseAdapter):
         latest = context.latest_observed_at_by_series.get(series_code)
         pub_col = spec.extra.get("publication_at_column") if spec.extra else None
 
-        observations: list[RawObservationIn] = []
+        observations: list[ParsedObservation] = []
         for row in rows:
             if not isinstance(row, dict):
                 continue
@@ -133,7 +133,7 @@ class WebPageAdapter(BaseAdapter):
             else:
                 publication_at = None
             observations.append(
-                RawObservationIn(
+                ParsedObservation(
                     series_code=series_code,
                     source_code=context.source.source_code,
                     observed_at=observed_at,

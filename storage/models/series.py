@@ -4,7 +4,7 @@ from sqlalchemy import (
     String,
     Text,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 
 from storage.db.base import Base, UUIDMixin, TimestampMixin
 
@@ -71,8 +71,4 @@ class Series(Base, UUIDMixin, TimestampMixin):
         Boolean,
         server_default="true",
         nullable=False,
-    )
-
-    observations: Mapped[list["RawObservation"]] = relationship(
-        back_populates="series",
     )

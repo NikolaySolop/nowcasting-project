@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from ingestion.adapters.base import AdapterError, BaseAdapter, FetchContext, FetchResult
-from ingestion.schemas.observations import ObservationIn, ObservationKind, RawObservationIn
+from ingestion.schemas.observations import ObservationIn, ObservationKind, ParsedObservation
 
 
 class EiaAdapter(BaseAdapter):
@@ -76,7 +76,7 @@ class EiaAdapter(BaseAdapter):
     def _to_table_observations(
         self,
         context: FetchContext,
-        observations: list[RawObservationIn],
+        observations: list[ParsedObservation],
         extra: dict[str, Any],
         *,
         loaded_at: datetime,
@@ -129,7 +129,7 @@ class EiaAdapter(BaseAdapter):
         return loaded_at
 
     @staticmethod
-    def _is_backfill_run(context: FetchContext, observations: list[RawObservationIn]) -> bool:
+    def _is_backfill_run(context: FetchContext, observations: list[ParsedObservation]) -> bool:
         if not observations:
             return False
 
@@ -251,7 +251,7 @@ class EiaAdapter(BaseAdapter):
         context: FetchContext,
         rows: list[dict[str, Any]],
         extra: dict[str, Any],
-    ) -> list[RawObservationIn]:
+    ) -> list[ParsedObservation]:
         spec = context.source.scrape
         if spec is None:
             return []
@@ -261,7 +261,7 @@ class EiaAdapter(BaseAdapter):
         transform = str(extra.get("transform", "level")).lower()
         scale = self._parse_decimal(str(extra.get("scale", "1"))) or Decimal("1")
 
-        observations: list[RawObservationIn] = []
+        observations: list[ParsedObservation] = []
         previous_value: Decimal | None = None
         for row in rows:
             observed_at = row["observed_at"]
@@ -278,7 +278,7 @@ class EiaAdapter(BaseAdapter):
                 continue
 
             observations.append(
-                RawObservationIn(
+                ParsedObservation(
                     series_code=target_series_code,
                     source_code=context.source.source_code,
                     observed_at=observed_at,

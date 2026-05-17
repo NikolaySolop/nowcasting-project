@@ -17,7 +17,7 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from ingestion.adapters.base import AdapterError, BaseAdapter, FetchContext, FetchResult
-from ingestion.schemas.observations import ObservationIn, ObservationKind, RawObservationIn
+from ingestion.schemas.observations import ObservationIn, ObservationKind, ParsedObservation
 
 
 class TradingViewAdapter(BaseAdapter):
@@ -138,7 +138,7 @@ class TradingViewAdapter(BaseAdapter):
         if last_observed is not None and observed_at <= last_observed:
             return FetchResult(observations=[])
 
-        observation = RawObservationIn(
+        observation = ParsedObservation(
             series_code=ticker,
             source_code=context.source.source_code,
             observed_at=observed_at,
@@ -169,7 +169,7 @@ class TradingViewAdapter(BaseAdapter):
         ticker: str,
         interval_minutes: int,
         headers: dict[str, str],
-    ) -> list[RawObservationIn]:
+    ) -> list[ParsedObservation]:
         spec = context.source.scrape
         if spec is None or spec.start_date is None:
             return []
@@ -224,7 +224,7 @@ class TradingViewAdapter(BaseAdapter):
         backfill_interval: str,
         extra: dict[str, Any],
         timeout_seconds: float,
-    ) -> list[RawObservationIn]:
+    ) -> list[ParsedObservation]:
         chart_session = self._new_session("cs")
         quote_session = self._new_session("qs")
         symbol_ref = "symbol_1"
@@ -321,7 +321,7 @@ class TradingViewAdapter(BaseAdapter):
                 )
 
             return [
-                RawObservationIn(
+                ParsedObservation(
                     series_code=ticker,
                     source_code=source_code,
                     observed_at=observed_at,
@@ -698,7 +698,7 @@ class TradingViewAdapter(BaseAdapter):
 
     def _to_table_observations(
         self,
-        observations: list[RawObservationIn],
+        observations: list[ParsedObservation],
         interval_minutes: int,
         extra: dict[str, Any],
         *,
@@ -734,7 +734,7 @@ class TradingViewAdapter(BaseAdapter):
 
     def _observation_period(
         self,
-        observation: RawObservationIn,
+        observation: ParsedObservation,
         interval_minutes: int,
         exchange_tz: ZoneInfo,
         extra: dict[str, Any],
@@ -760,7 +760,7 @@ class TradingViewAdapter(BaseAdapter):
         return reference_date, published_at, published_at, published_at
 
     @staticmethod
-    def _observation_interval(observation: RawObservationIn) -> str | None:
+    def _observation_interval(observation: ParsedObservation) -> str | None:
         raw_payload = observation.raw_payload or {}
         interval = raw_payload.get("interval")
         return str(interval) if interval is not None else None
@@ -846,7 +846,7 @@ class TradingViewAdapter(BaseAdapter):
 
     def _observation_reference_delta(
         self,
-        observation: RawObservationIn,
+        observation: ParsedObservation,
         interval_minutes: int,
     ) -> timedelta:
         interval = self._observation_interval(observation)

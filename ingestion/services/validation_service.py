@@ -1,9 +1,9 @@
 from typing import TypeVar
 
-from ingestion.schemas.observations import ObservationIn, RawObservationIn
+from ingestion.schemas.observations import ObservationIn, ParsedObservation
 
 
-ObservationT = TypeVar("ObservationT", RawObservationIn, ObservationIn)
+ObservationT = TypeVar("ObservationT", ParsedObservation, ObservationIn)
 
 
 class ValidationService:

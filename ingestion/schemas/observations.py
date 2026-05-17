@@ -14,7 +14,7 @@ class ObservationKind(str, Enum):
     EVENT = "event"
 
 
-class RawObservationIn(BaseModel):
+class ParsedObservation(BaseModel):
     series_code: str = Field(min_length=1, max_length=50)
     source_code: str = Field(min_length=1, max_length=50)
     observed_at: datetime
@@ -39,7 +39,7 @@ class RawObservationIn(BaseModel):
         return value
 
     @model_validator(mode="after")
-    def validate_value(self) -> "RawObservationIn":
+    def validate_value(self) -> "ParsedObservation":
         if self.value_numeric is None and self.value_text is None:
             raise ValueError("either value_numeric or value_text must be set")
         return self
@@ -96,5 +96,5 @@ class ObservationIn(BaseModel):
 class IngestionBatch(BaseModel):
     source_code: str
     loaded_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    observations: list[RawObservationIn] = Field(default_factory=list)
+    observations: list[ParsedObservation] = Field(default_factory=list)
     raw_payload: dict[str, Any] | None = None

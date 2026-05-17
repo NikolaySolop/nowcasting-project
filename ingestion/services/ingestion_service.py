@@ -11,15 +11,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ingestion.adapters.base import AdapterError, BaseAdapter, FetchContext, FetchResult
 from ingestion.core.config import Settings
 from ingestion.schemas.jobs import IngestionJobResult
-from ingestion.schemas.observations import ObservationIn, RawObservationIn
+from ingestion.schemas.observations import ObservationIn
 from ingestion.schemas.sources import SeriesDefinition, SourceDefinition, SourceKind
 from ingestion.services.source_registry import SourceRegistry
 from ingestion.services.validation_service import ValidationService
 from storage.models.enums import Frequency, SourceType, TransformType
 from storage.models.observations import Observation
-from storage.models.raw_obsevations import RawObservation
 from storage.repositories.observation import ObservationRepository
-from storage.repositories.raw_observation import RawObservationRepository
 from storage.repositories.series import SeriesRepository
 from storage.repositories.source import DataSourceRepository
 
@@ -40,7 +38,6 @@ class IngestionService:
         self.validation = validation or ValidationService()
         self.sources = DataSourceRepository(session)
         self.series = SeriesRepository(session)
-        self.observations = RawObservationRepository(session)
         self.table_observations = ObservationRepository(session)
 
     async def run(self, source_codes: list[str] | None = None) -> IngestionJobResult:
@@ -77,23 +74,20 @@ class IngestionService:
         adapter = self.registry.build_adapter(source)
         latest_observed = await self._latest_observed_at_by_series(source)
         fetch_result = await self._fetch_with_retries(source, adapter, latest_observed)
+        if fetch_result.observations:
+            raise AdapterError(
+                f"source {source.source_code} returned parsed observations, "
+                "but only table observations are supported"
+            )
         await self._ensure_source(source)
         if source.series:
             await self._ensure_series_batch(source, {series.series_code for series in source.series})
-        loaded_count, duplicate_count = await self._store_observations(
-            source,
-            fetch_result.observations,
-            loaded_at=fetch_result.loaded_at,
-            commit=False,
-        )
-        table_loaded_count, table_duplicate_count = await self._store_table_observations(
+        loaded_count, duplicate_count = await self._store_table_observations(
             source,
             fetch_result.table_observations,
             loaded_at=fetch_result.loaded_at,
             commit=False,
         )
-        loaded_count += table_loaded_count
-        duplicate_count += table_duplicate_count
         loaded_count += fetch_result.persisted_loaded_count
         duplicate_count += fetch_result.persisted_duplicate_count
 
@@ -299,17 +293,9 @@ class IngestionService:
             source=source,
             settings=self.settings,
             latest_observed_at_by_series=latest_observed_at_by_series,
-            observation_sink=lambda observations, loaded_at: self._store_observations(
-                source,
-                observations,
-                loaded_at=loaded_at,
-                commit=True,
-            ),
         )
         last_error: Exception | None = None
         retry_attempts = self.settings.retry_attempts
-        if source.scrape is not None and bool((source.scrape.extra or {}).get("streaming_persistence", False)):
-            retry_attempts = 1
         for attempt in range(1, retry_attempts + 1):
             try:
                 return await adapter.fetch(context)
@@ -322,72 +308,6 @@ class IngestionService:
                 if attempt < retry_attempts:
                     await asyncio.sleep(self.settings.retry_backoff_seconds * attempt)
         raise AdapterError(f"source {source.source_code} failed after retries: {last_error}")
-
-    async def _store_observations(
-        self,
-        source: SourceDefinition,
-        observations: list[RawObservationIn],
-        *,
-        loaded_at: datetime,
-        commit: bool,
-    ) -> tuple[int, int]:
-        if not observations:
-            return 0, 0
-
-        preserve_vintage = bool(source.csv and source.csv.vintage_date_column)
-        if source.scrape and bool((source.scrape.extra or {}).get("preserve_vintage_at", False)):
-            preserve_vintage = True
-        if not preserve_vintage:
-            for observation in observations:
-                observation.vintage_at = loaded_at
-
-        valid_observations, duplicate_count = self.validation.deduplicate_batch(observations)
-        storage_source = await self._ensure_source(source)
-        series_by_code = await self._ensure_series_batch(
-            source,
-            {observation.series_code for observation in valid_observations},
-        )
-        existing_keys = await self._existing_observation_keys(storage_source.id, series_by_code, valid_observations)
-
-        loaded_count = 0
-        new_entities: list[RawObservation] = []
-        for observation in valid_observations:
-            storage_series = series_by_code[observation.series_code]
-            key = self._observation_storage_key(storage_series.id, observation)
-            if key in existing_keys:
-                duplicate_count += 1
-                continue
-            existing_keys.add(key)
-            new_entities.append(
-                RawObservation(
-                    series_id=storage_series.id,
-                    source_id=storage_source.id,
-                    observed_at=observation.observed_at,
-                    period_start=observation.period_start,
-                    period_end=observation.period_end,
-                    value_numeric=observation.value_numeric,
-                    value_text=observation.value_text,
-                    publication_at=observation.publication_at,
-                    vintage_at=observation.vintage_at,
-                    is_revised=observation.is_revised,
-                    is_final=observation.is_final,
-                    raw_payload=observation.raw_payload,
-                )
-            )
-            loaded_count += 1
-
-        if new_entities:
-            self.session.add_all(new_entities)
-            await self.session.flush()
-
-        if commit:
-            try:
-                await self.session.commit()
-            except IntegrityError:
-                await self.session.rollback()
-                raise
-
-        return loaded_count, duplicate_count
 
     async def _ensure_source(self, source: SourceDefinition):
         existing = await self.sources.get_by_source_code(source.source_code)
@@ -475,41 +395,17 @@ class IngestionService:
             await self.session.flush()
 
     async def _latest_observed_at_by_series(self, source: SourceDefinition) -> dict[str, datetime]:
-        if self._stores_table_observations(source):
-            default_revision_check = 5 if source.adapter_name in {"fred_observations", "fred_sofr"} else 0
-            revision_check_observations = int(
-                (source.scrape.extra if source.scrape else {}).get(
-                    "revision_check_observations",
-                    default_revision_check,
-                )
+        default_revision_check = 5 if source.adapter_name in {"fred_observations", "fred_sofr"} else 0
+        revision_check_observations = int(
+            (source.scrape.extra if source.scrape else {}).get(
+                "revision_check_observations",
+                default_revision_check,
             )
-            return await self._latest_reference_start_by_series(
-                source,
-                revision_check_observations=revision_check_observations,
-            )
-
-        use_global = bool((source.scrape.extra if source.scrape else {}).get("global_series_latest"))
-        if use_global:
-            series_codes = [s.series_code for s in source.series]
-            existing: dict[str, datetime] = await self.observations.latest_observed_at_by_series_global(series_codes)
-        else:
-            storage_source = await self.sources.get_by_source_code(source.source_code)
-            if storage_source is None:
-                existing = {}
-            else:
-                existing = await self.observations.latest_observed_at_by_series(storage_source.id)
-
-        start_date = source.scrape.start_date if source.scrape else None
-        if start_date is None:
-            return existing
-
-        if start_date.tzinfo is None:
-            start_date = start_date.replace(tzinfo=timezone.utc)
-        interval_minutes = int((source.scrape.extra or {}).get("interval_minutes", 15))
-        bootstrap_latest = start_date - timedelta(minutes=max(1, interval_minutes))
-        for series in source.series:
-            existing.setdefault(series.series_code, bootstrap_latest)
-        return existing
+        )
+        return await self._latest_reference_start_by_series(
+            source,
+            revision_check_observations=revision_check_observations,
+        )
 
     async def _latest_reference_start_by_series(
         self,
@@ -542,66 +438,6 @@ class IngestionService:
         for series in source.series:
             existing.setdefault(series.series_code, bootstrap_latest)
         return existing
-
-    async def _already_loaded(self, series_id, source_id, observation: RawObservationIn) -> bool:
-        stmt = select(RawObservation).where(
-            RawObservation.series_id == series_id,
-            RawObservation.source_id == source_id,
-            RawObservation.observed_at == observation.observed_at,
-            RawObservation.publication_at == observation.publication_at,
-            RawObservation.value_text == observation.value_text,
-        )
-        if observation.value_numeric is None:
-            stmt = stmt.where(RawObservation.value_numeric.is_(None))
-        else:
-            stmt = stmt.where(RawObservation.value_numeric == Decimal(observation.value_numeric))
-        return await self.session.scalar(stmt) is not None
-
-    async def _existing_observation_keys(
-        self,
-        source_id,
-        series_by_code: dict[str, object],
-        observations: list[RawObservationIn],
-    ) -> set[tuple[object, ...]]:
-        if not observations:
-            return set()
-
-        series_ids = {series_by_code[observation.series_code].id for observation in observations}
-        min_observed_at = min(observation.observed_at for observation in observations)
-        max_observed_at = max(observation.observed_at for observation in observations)
-        stmt = select(
-            RawObservation.series_id,
-            RawObservation.observed_at,
-            RawObservation.publication_at,
-            RawObservation.value_numeric,
-            RawObservation.value_text,
-        ).where(
-            RawObservation.source_id == source_id,
-            RawObservation.series_id.in_(series_ids),
-            RawObservation.observed_at >= min_observed_at,
-            RawObservation.observed_at <= max_observed_at,
-        )
-        rows = (await self.session.execute(stmt)).all()
-        return {
-            (
-                series_id,
-                observed_at,
-                publication_at,
-                Decimal(value_numeric) if value_numeric is not None else None,
-                value_text,
-            )
-            for series_id, observed_at, publication_at, value_numeric, value_text in rows
-        }
-
-    @staticmethod
-    def _observation_storage_key(series_id, observation: RawObservationIn) -> tuple[object, ...]:
-        return (
-            series_id,
-            observation.observed_at,
-            observation.publication_at,
-            Decimal(observation.value_numeric) if observation.value_numeric is not None else None,
-            observation.value_text,
-        )
 
     async def _existing_table_observation_rows(
         self,
@@ -713,13 +549,6 @@ class IngestionService:
         while published_at in existing_published_at:
             published_at += timedelta(microseconds=1)
         return published_at
-
-    @staticmethod
-    def _stores_table_observations(source: SourceDefinition) -> bool:
-        if source.adapter_name in {"fred_observations", "fred_sofr", "tradingview"}:
-            return True
-        extra = source.scrape.extra if source.scrape is not None else {}
-        return bool(extra.get("store_in_observations", False))
 
     @staticmethod
     def _to_storage_source_type(source_type: SourceKind) -> SourceType:

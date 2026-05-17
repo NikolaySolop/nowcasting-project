@@ -12,7 +12,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from ingestion.adapters.base import AdapterError, BaseAdapter, FetchContext, FetchResult
-from ingestion.schemas.observations import ObservationIn, ObservationKind, RawObservationIn
+from ingestion.schemas.observations import ObservationIn, ObservationKind, ParsedObservation
 from ingestion.services.isdayoff import IsDayOffClient, IsDayOffError
 
 
@@ -134,9 +134,6 @@ class ExchangeRatesAdapter(BaseAdapter):
         loaded_at = datetime.now(timezone.utc)
         request_summaries: list[dict[str, Any]] = []
         all_rows: list[dict[str, Any]] = []
-        persisted_loaded_count = 0
-        persisted_duplicate_count = 0
-        streamed = context.observation_sink is not None and not store_in_observations
         session_state: dict[str, str] = {}
 
         async with httpx.AsyncClient(timeout=context.settings.request_timeout_seconds, follow_redirects=True) as client:
@@ -156,19 +153,6 @@ class ExchangeRatesAdapter(BaseAdapter):
                     request_summaries.append(summary)
                     rows = self._parse_history_json_rows(payload, pair=pair)
                     all_rows.extend(rows)
-                    if streamed:
-                        page_loaded_at = datetime.now(timezone.utc)
-                        loaded_count, duplicate_count = await context.observation_sink(
-                            self._history_rows_to_observations(
-                                rows,
-                                source_code=context.source.source_code,
-                                series_code=series_code,
-                            ),
-                            page_loaded_at,
-                        )
-                        persisted_loaded_count += loaded_count
-                        persisted_duplicate_count += duplicate_count
-
                     pages = self._parse_int(payload.get("pages")) if isinstance(payload, dict) else None
                     if pages is None or page >= pages:
                         break
@@ -179,44 +163,24 @@ class ExchangeRatesAdapter(BaseAdapter):
         rows_by_date = {row["date"]: row for row in all_rows}
         rows = [rows_by_date[observed_at] for observed_at in sorted(rows_by_date)]
         filtered_rows = [row for row in rows if start_date is None or row["date"] >= start_date]
-        observations = (
-            []
-            if streamed or store_in_observations
-            else self._history_rows_to_observations(
-                filtered_rows,
-                source_code=context.source.source_code,
-                series_code=series_code,
-            )
-        )
-        table_observations = (
-            self._history_rows_to_table_observations(
-                filtered_rows,
-                source_code=context.source.source_code,
-                series_code=series_code,
-                loaded_at=loaded_at,
-            )
-            if store_in_observations
-            else []
+        table_observations = self._history_rows_to_table_observations(
+            filtered_rows,
+            source_code=context.source.source_code,
+            series_code=series_code,
+            loaded_at=loaded_at,
         )
 
-        if not observations and not table_observations and not streamed:
+        if not table_observations:
             raise AdapterError("ExchangeRates daily history returned no close prices for configured date range")
 
         return FetchResult(
-            observations=[] if store_in_observations else observations,
             table_observations=table_observations,
             loaded_at=loaded_at,
-            persisted_loaded_count=persisted_loaded_count,
-            persisted_duplicate_count=persisted_duplicate_count,
             raw_payload={
                 "mode": "history_daily",
                 "row_count": len(rows),
-                "observation_count": (
-                    len(table_observations)
-                    if store_in_observations
-                    else len(observations) if not streamed else persisted_loaded_count
-                ),
-                "duplicate_count": persisted_duplicate_count,
+                "observation_count": len(table_observations),
+                "duplicate_count": 0,
                 "start_date": start_date.isoformat() if start_date else None,
                 "end_date": end_date.isoformat(),
                 "requests": request_summaries,
@@ -444,7 +408,7 @@ class ExchangeRatesAdapter(BaseAdapter):
                 },
             )
 
-        raw_observation = RawObservationIn(
+        parsed_observation = ParsedObservation(
             series_code=series_code,
             source_code=context.source.source_code,
             observed_at=observed_at,
@@ -463,18 +427,13 @@ class ExchangeRatesAdapter(BaseAdapter):
         )
 
         return FetchResult(
-            observations=[] if store_in_observations else [raw_observation],
-            table_observations=(
-                [
-                    self._live_observation_to_table(
-                        raw_observation,
-                        interval_minutes=interval_minutes,
-                        extra=extra,
-                    )
-                ]
-                if store_in_observations
-                else []
-            ),
+            table_observations=[
+                self._live_observation_to_table(
+                    parsed_observation,
+                    interval_minutes=interval_minutes,
+                    extra=extra,
+                )
+            ],
             loaded_at=fetched_at,
             raw_payload={
                 "url": str(response.url),
@@ -546,7 +505,7 @@ class ExchangeRatesAdapter(BaseAdapter):
         source_code: str,
         series_code: str,
         interval_minutes: int,
-    ) -> list[RawObservationIn]:
+    ) -> list[ParsedObservation]:
         buckets: dict[datetime, dict[str, Any]] = {}
         for point in points:
             observed_at = self._parse_datetime(point.get("time"))
@@ -571,7 +530,7 @@ class ExchangeRatesAdapter(BaseAdapter):
             bucket["points"].append({"time": observed_at.isoformat(), "value": str(value), "raw": point.get("raw")})
 
         return [
-            RawObservationIn(
+            ParsedObservation(
                 series_code=series_code,
                 source_code=source_code,
                 observed_at=observed_at,
@@ -733,9 +692,9 @@ class ExchangeRatesAdapter(BaseAdapter):
         *,
         source_code: str,
         series_code: str,
-    ) -> list[RawObservationIn]:
+    ) -> list[ParsedObservation]:
         return [
-            RawObservationIn(
+            ParsedObservation(
                 series_code=series_code,
                 source_code=source_code,
                 observed_at=row["date"],
@@ -783,7 +742,7 @@ class ExchangeRatesAdapter(BaseAdapter):
 
     def _live_observation_to_table(
         self,
-        observation: RawObservationIn,
+        observation: ParsedObservation,
         *,
         interval_minutes: int,
         extra: dict[str, Any],
