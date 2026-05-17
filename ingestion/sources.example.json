@@ -24,7 +24,9 @@
       "series": [
         {
           "series_code": "EXAMPLE_SERIES",
-          "series_name": "Example Series"
+          "series_name": "Example Series",
+          "frequency": "daily",
+          "units": "units"
         }
       ]
     },
@@ -35,22 +37,28 @@
       "source_code": "FRED_SOFR",
       "source_name": "FRED Secured Overnight Financing Rate",
       "source_type": "api",
-      "adapter_name": "fred",
+      "adapter_name": "fred_sofr",
       "enabled": true,
-      "schedule_cron": "0 14 * * 1-5",
+      "schedule_cron": "0 */2 * * *",
       "scrape": {
         "url": "https://api.stlouisfed.org/fred/series/observations",
         "parser": "text",
         "series_code": "FRED:SOFR",
-        "start_date": "2018-04-03",
+        "start_date": "2015-01-01",
         "extra": {
-          "fred_series_id": "SOFR"
+          "fred_series_id": "SOFR",
+          "revision_check_observations": 5
         }
       },
       "series": [
         {
           "series_code": "FRED:SOFR",
-          "series_name": "Secured Overnight Financing Rate, percent"
+          "series_name": "Secured Overnight Financing Rate, percent",
+          "frequency": "daily",
+          "group_code": "global_usd_risk",
+          "description": "Short-term U.S. dollar money market rate, a base measure of USD funding conditions.",
+          "units": "percent",
+          "subgroup_code": "usd_money_market"
         }
       ]
     },
@@ -58,22 +66,28 @@
       "source_code": "FRED_EFFR",
       "source_name": "FRED Effective Federal Funds Rate",
       "source_type": "api",
-      "adapter_name": "fred",
+      "adapter_name": "fred_observations",
       "enabled": true,
-      "schedule_cron": "0 14 * * 1-5",
+      "schedule_cron": "0 */2 * * *",
       "scrape": {
         "url": "https://api.stlouisfed.org/fred/series/observations",
         "parser": "text",
         "series_code": "FRED:EFFR",
-        "start_date": "2000-07-03",
+        "start_date": "2015-01-01",
         "extra": {
-          "fred_series_id": "EFFR"
+          "fred_series_id": "EFFR",
+          "revision_check_observations": 5
         }
       },
       "series": [
         {
           "series_code": "FRED:EFFR",
-          "series_name": "Effective Federal Funds Rate, percent"
+          "series_name": "Effective Federal Funds Rate, percent",
+          "frequency": "daily",
+          "group_code": "global_usd_risk",
+          "subgroup_code": "usd_money_market",
+          "description": "Effective federal funds rate, a key benchmark for overnight U.S. dollar funding conditions.",
+          "units": "percent"
         }
       ]
     },
@@ -92,6 +106,10 @@
           "ticker": "TVC:VIX",
           "interval_minutes": 15,
           "history_interval": "1d",
+          "store_in_observations": true,
+          "exchange_timezone": "America/New_York",
+          "trading_session_open_time": "09:30",
+          "daily_session_close_time": "16:15",
           "backfill_enabled": true
         },
         "start_date": "01.01.2015"
@@ -99,7 +117,12 @@
       "series": [
         {
           "series_code": "TVC:VIX",
-          "series_name": "CBOE Volatility Index (VIX)"
+          "series_name": "CBOE Volatility Index (VIX)",
+          "frequency": "15min",
+          "group_code": "global_usd_risk",
+          "subgroup_code": "risk_sentiment",
+          "description": "CBOE Volatility Index, a market-implied measure of expected S&P 500 volatility and global risk sentiment.",
+          "units": "index_points"
         }
       ]
     },
@@ -118,6 +141,10 @@
           "ticker": "FX_IDC:USDEUR",
           "interval_minutes": 15,
           "history_interval": "1d",
+          "store_in_observations": true,
+          "exchange_timezone": "America/New_York",
+          "trading_session_open_time": "09:30",
+          "daily_session_close_time": "16:15",
           "backfill_enabled": true
         },
         "start_date": "01.01.2015"
@@ -125,7 +152,12 @@
       "series": [
         {
           "series_code": "FX_IDC:USDEUR",
-          "series_name": "U.S. Dollar / Euro"
+          "series_name": "U.S. Dollar / Euro",
+          "frequency": "15min",
+          "group_code": "global_usd_risk",
+          "subgroup_code": "global_fx",
+          "description": "Indicator of broad U.S. dollar strength through the USD/EUR exchange rate.",
+          "units": "EUR per USD"
         }
       ]
     },
@@ -144,6 +176,10 @@
           "ticker": "TVC:DXY",
           "interval_minutes": 15,
           "history_interval": "1d",
+          "store_in_observations": true,
+          "exchange_timezone": "America/New_York",
+          "trading_session_open_time": "09:30",
+          "daily_session_close_time": "16:15",
           "backfill_enabled": true
         },
         "start_date": "01.01.2015"
@@ -151,7 +187,12 @@
       "series": [
         {
           "series_code": "TVC:DXY",
-          "series_name": "U.S. Dollar Index (DXY)"
+          "series_name": "U.S. Dollar Index (DXY)",
+          "frequency": "15min",
+          "group_code": "global_usd_risk",
+          "subgroup_code": "usd_index",
+          "description": "U.S. Dollar Index, a key external pressure factor for RUB/USD.",
+          "units": "index_points"
         }
       ]
     },
@@ -169,13 +210,24 @@
         "extra": {
           "ticker": "TVC:US02Y",
           "interval_minutes": 15,
-          "backfill_enabled": false
-        }
+          "history_interval": "1d",
+          "store_in_observations": true,
+          "exchange_timezone": "America/New_York",
+          "trading_session_open_time": "09:30",
+          "daily_session_close_time": "16:15",
+          "backfill_enabled": true
+        },
+        "start_date": "01.01.2015"
       },
       "series": [
         {
           "series_code": "TVC:US02Y",
-          "series_name": "U.S. Treasury 2Y Yield"
+          "series_name": "U.S. Treasury 2Y Yield",
+          "frequency": "15min",
+          "group_code": "global_usd_risk",
+          "subgroup_code": "us_rates",
+          "description": "2-year U.S. Treasury yield, sensitive to Federal Reserve expectations.",
+          "units": "percent"
         }
       ]
     },
@@ -193,13 +245,24 @@
         "extra": {
           "ticker": "TVC:US10Y",
           "interval_minutes": 15,
-          "backfill_enabled": false
-        }
+          "history_interval": "1d",
+          "store_in_observations": true,
+          "exchange_timezone": "America/New_York",
+          "trading_session_open_time": "09:30",
+          "daily_session_close_time": "16:15",
+          "backfill_enabled": true
+        },
+        "start_date": "01.01.2015"
       },
       "series": [
         {
           "series_code": "TVC:US10Y",
-          "series_name": "U.S. Treasury 10Y Yield"
+          "series_name": "U.S. Treasury 10Y Yield",
+          "frequency": "15min",
+          "group_code": "global_usd_risk",
+          "subgroup_code": "us_rates",
+          "description": "10-year U.S. Treasury yield, a global rates and risk factor.",
+          "units": "percent"
         }
       ]
     },
@@ -217,13 +280,21 @@
         "extra": {
           "ticker": "TVC:US10Y-US02Y",
           "interval_minutes": 15,
-          "backfill_enabled": false
-        }
+          "history_interval": "1d",
+          "store_in_observations": true,
+          "exchange_timezone": "America/New_York",
+          "trading_session_open_time": "09:30",
+          "daily_session_close_time": "16:15",
+          "backfill_enabled": true
+        },
+        "start_date": "01.01.2015"
       },
       "series": [
         {
           "series_code": "TVC:US10Y-US02Y",
-          "series_name": "U.S. Treasury 10Y-2Y Yield Spread"
+          "series_name": "U.S. Treasury 10Y-2Y Yield Spread",
+          "frequency": "15min",
+          "units": "percentage_points"
         }
       ]
     },
@@ -236,23 +307,34 @@
       "source_type": "api",
       "adapter_name": "eia",
       "enabled": true,
-      "schedule_cron": "0 18 * * 3",
+      "schedule_cron": "0 */2 * * 1-5",
       "scrape": {
         "parser": "text",
         "series_code": "ECONOMICS:USCOSC",
-        "start_date": "20.08.1982",
+        "start_date": "01.01.2015",
         "extra": {
           "eia_series_id": "PET.WCESTUS1.W",
           "frequency": "weekly",
           "frequency_code": "W",
           "transform": "period_diff",
-          "scale": "0.001"
+          "scale": "0.001",
+          "store_in_observations": true,
+          "backfill_published_at": "next_wednesday_1030_et",
+          "report_week": "saturday_friday",
+          "period_date_role": "week_end"
         }
       },
       "series": [
         {
           "series_code": "ECONOMICS:USCOSC",
-          "series_name": "United States Crude Oil Stocks Change, million barrels"
+          "series_name": "United States Crude Oil Stocks Change, million barrels",
+          "frequency": "weekly",
+          "group_code": "energy_fundamentals",
+          "subgroup_code": "oil_stocks",
+          "description": "Change in U.S. crude oil inventories, a weekly fundamental oil shock.",
+          "units": "million barrels",
+          "default_transform": "level",
+          "is_model_input": true
         }
       ]
     },
@@ -262,23 +344,34 @@
       "source_type": "api",
       "adapter_name": "eia",
       "enabled": true,
-      "schedule_cron": "0 18 * * 3",
+      "schedule_cron": "0 */2 * * 1-5",
       "scrape": {
         "parser": "text",
         "series_code": "ECONOMICS:USGSCH",
-        "start_date": "05.01.1990",
+        "start_date": "01.01.2015",
         "extra": {
           "eia_series_id": "PET.WGTSTUS1.W",
           "frequency": "weekly",
           "frequency_code": "W",
           "transform": "period_diff",
-          "scale": "0.001"
+          "scale": "0.001",
+          "store_in_observations": true,
+          "backfill_published_at": "next_wednesday_1030_et",
+          "report_week": "saturday_friday",
+          "period_date_role": "week_end"
         }
       },
       "series": [
         {
           "series_code": "ECONOMICS:USGSCH",
-          "series_name": "United States Gasoline Stocks Change, million barrels"
+          "series_name": "United States Gasoline Stocks Change, million barrels",
+          "frequency": "weekly",
+          "group_code": "energy_fundamentals",
+          "subgroup_code": "gasoline_stocks",
+          "description": "Change in U.S. gasoline inventories, an indicator of oil product demand and balance.",
+          "units": "million barrels",
+          "default_transform": "level",
+          "is_model_input": true
         }
       ]
     },
@@ -288,23 +381,34 @@
       "source_type": "api",
       "adapter_name": "eia",
       "enabled": true,
-      "schedule_cron": "0 18 * * 3",
+      "schedule_cron": "0 */2 * * 1-5",
       "scrape": {
         "parser": "text",
         "series_code": "ECONOMICS:USDFS",
-        "start_date": "20.08.1982",
+        "start_date": "01.01.2015",
         "extra": {
           "eia_series_id": "PET.WDISTUS1.W",
           "frequency": "weekly",
           "frequency_code": "W",
           "transform": "period_diff",
-          "scale": "0.001"
+          "scale": "0.001",
+          "store_in_observations": true,
+          "backfill_published_at": "next_wednesday_1030_et",
+          "report_week": "saturday_friday",
+          "period_date_role": "week_end"
         }
       },
       "series": [
         {
           "series_code": "ECONOMICS:USDFS",
-          "series_name": "United States Distillate Stocks Change, million barrels"
+          "series_name": "United States Distillate Stocks Change, million barrels",
+          "frequency": "weekly",
+          "group_code": "energy_fundamentals",
+          "subgroup_code": "distillate_stocks",
+          "description": "Change in distillate inventories, important for the diesel market.",
+          "units": "million barrels",
+          "default_transform": "level",
+          "is_model_input": true
         }
       ]
     },
@@ -314,23 +418,34 @@
       "source_type": "api",
       "adapter_name": "eia",
       "enabled": true,
-      "schedule_cron": "0 18 1 * *",
+      "schedule_cron": "0 */2 * * 1-5",
       "scrape": {
         "parser": "text",
         "series_code": "ECONOMICS:USCOR",
-        "start_date": "01.01.1973",
+        "start_date": "01.01.2015",
         "extra": {
           "eia_series_id": "PET.E_ERTRRO_XR0_NUS_C.M",
-          "frequency": "monthly",
-          "frequency_code": "M",
+          "frequency": "weekly",
+          "frequency_code": "W",
           "transform": "level",
-          "scale": "1"
+          "scale": "1",
+          "store_in_observations": true,
+          "backfill_published_at": "friday_1200_ct",
+          "report_week": "monday_friday",
+          "period_date_role": "week_end"
         }
       },
       "series": [
         {
           "series_code": "ECONOMICS:USCOR",
-          "series_name": "United States Crude Oil Rotary Rigs, units"
+          "series_name": "United States Crude Oil Rotary Rigs, units",
+          "frequency": "weekly",
+          "group_code": "energy_fundamentals",
+          "subgroup_code": "rig_count",
+          "description": "U.S. crude oil rig count, an indicator of future oil supply.",
+          "units": "count",
+          "default_transform": "level",
+          "is_model_input": true
         }
       ]
     },
@@ -349,6 +464,10 @@
           "ticker": "ICEEUR:BRN1!",
           "interval_minutes": 15,
           "history_interval": "1d",
+          "store_in_observations": true,
+          "exchange_timezone": "Europe/London",
+          "trading_session_open_time": "01:00",
+          "daily_session_close_time": "23:00",
           "backfill_enabled": true
         },
         "start_date": "01.01.2015"
@@ -356,7 +475,12 @@
       "series": [
         {
           "series_code": "ICEEUR:BRN1!",
-          "series_name": "Brent Crude Futures"
+          "series_name": "Brent Crude Futures",
+          "frequency": "15min",
+          "group_code": "energy",
+          "subgroup_code": "oil_price_intraday",
+          "description": "Front-month ICE Brent crude futures, a global oil benchmark and external factor for ruble nowcasting.",
+          "units": "USD per barrel"
         }
       ]
     },
@@ -375,14 +499,23 @@
           "ticker": "ICEENDEX:TFM1!",
           "interval_minutes": 15,
           "history_interval": "1d",
+          "store_in_observations": true,
+          "exchange_timezone": "Europe/Amsterdam",
+          "trading_session_open_time": "08:00",
+          "daily_session_close_time": "18:00",
           "backfill_enabled": true
         },
-        "start_date": "02.01.2015"
+        "start_date": "01.01.2015"
       },
       "series": [
         {
           "series_code": "ICEENDEX:TFM1!",
-          "series_name": "Dutch TTF Natural Gas Futures 1st Contract"
+          "series_name": "Dutch TTF Natural Gas Futures 1st Contract",
+          "frequency": "15min",
+          "group_code": "energy",
+          "subgroup_code": "gas_prices",
+          "description": "First TTF gas contract, an indicator of the European gas market.",
+          "units": "EUR per MWh"
         }
       ]
     },
@@ -401,6 +534,10 @@
           "ticker": "ICEENDEX:TFM2!",
           "interval_minutes": 15,
           "history_interval": "1d",
+          "store_in_observations": true,
+          "exchange_timezone": "Europe/Amsterdam",
+          "trading_session_open_time": "08:00",
+          "daily_session_close_time": "18:00",
           "backfill_enabled": true
         },
         "start_date": "02.01.2015"
@@ -408,7 +545,12 @@
       "series": [
         {
           "series_code": "ICEENDEX:TFM2!",
-          "series_name": "Dutch TTF Natural Gas Futures 2nd Contract"
+          "series_name": "Dutch TTF Natural Gas Futures 2nd Contract",
+          "frequency": "15min",
+          "group_code": "energy",
+          "subgroup_code": "gas_prices",
+          "description": "Second TTF gas contract, used to monitor the shape of the gas forward curve.",
+          "units": "EUR per MWh"
         }
       ]
     },
@@ -427,14 +569,23 @@
           "ticker": "ICEEUR:ULS1!",
           "interval_minutes": 15,
           "history_interval": "1d",
+          "store_in_observations": true,
+          "exchange_timezone": "Europe/London",
+          "trading_session_open_time": "01:00",
+          "daily_session_close_time": "23:00",
           "backfill_enabled": true
         },
-        "start_date": "02.01.2015"
+        "start_date": "01.01.2015"
       },
       "series": [
         {
           "series_code": "ICEEUR:ULS1!",
-          "series_name": "Low Sulphur Gasoil Futures"
+          "series_name": "Low Sulphur Gasoil Futures",
+          "frequency": "15min",
+          "group_code": "energy",
+          "subgroup_code": "oil_products",
+          "description": "Low sulphur gasoil futures, a proxy for oil products and refining margins.",
+          "units": "USD per metric ton"
         }
       ]
     },
@@ -453,6 +604,11 @@
           "ticker": "NYMEX:GZ1!",
           "interval_minutes": 15,
           "history_interval": "1d",
+          "store_in_observations": true,
+          "exchange_timezone": "America/New_York",
+          "trading_session_open_time": "18:00",
+          "daily_session_close_time": "17:00",
+          "trading_session_weekdays": ["sun", "mon", "tue", "wed", "thu", "fri"],
           "backfill_enabled": true
         },
         "start_date": "01.01.2015"
@@ -460,7 +616,12 @@
       "series": [
         {
           "series_code": "NYMEX:GZ1!",
-          "series_name": "NY Harbor ULSD Financial Futures"
+          "series_name": "NY Harbor ULSD Financial Futures",
+          "frequency": "15min",
+          "group_code": "energy",
+          "subgroup_code": "oil_products",
+          "description": "NY Harbor ULSD financial futures, a proxy for the diesel market.",
+          "units": "USD per gallon"
         }
       ]
     },
@@ -479,6 +640,11 @@
           "ticker": "NYMEX:HO1!",
           "interval_minutes": 15,
           "history_interval": "1d",
+          "store_in_observations": true,
+          "exchange_timezone": "America/New_York",
+          "trading_session_open_time": "18:00",
+          "daily_session_close_time": "17:00",
+          "trading_session_weekdays": ["sun", "mon", "tue", "wed", "thu", "fri"],
           "backfill_enabled": true
         },
         "start_date": "01.01.2015"
@@ -486,43 +652,14 @@
       "series": [
         {
           "series_code": "NYMEX:HO1!",
-          "series_name": "NY Harbor ULSD Futures"
+          "series_name": "NY Harbor ULSD Futures",
+          "frequency": "15min",
+          "group_code": "energy",
+          "subgroup_code": "oil_products",
+          "description": "Heating oil and ULSD futures, an additional oil products indicator.",
+          "units": "USD per gallon"
         }
       ]
-    },
-    {
-      "source_code": "PROFINANCE_URALS",
-      "source_name": "ProFinance Urals 15m",
-      "source_type": "web",
-      "adapter_name": "profinance",
-      "enabled": false,
-      "schedule_cron": "*/15 * * * *",
-      "scrape": {
-        "url": "https://www.profinance.ru/urals/",
-        "parser": "text",
-        "series_code": "PROFINANCE:URALS",
-        "extra": {
-          "ticker": "Urals Med",
-          "interval_minutes": 15,
-          "discover_page": true,
-          "page_urls": [
-            "https://profinance.broker-obzor.com/chart/urals/"
-          ],
-          "require_full_backfill": false,
-          "current_chart_assets": "charts/20240527",
-          "current_page_script": "urals/ws_2026030301.js"
-        },
-        "start_date": "01.01.2015"
-      },
-      "series": [
-        {
-          "series_code": "PROFINANCE:URALS",
-          "series_name": "Urals crude oil, USD/bbl"
-        }
-      ],
-      "metadata": {
-        "note": "Set scrape.extra.websocket_url/websocket_messages or history_url after confirming the current ProFinance chart endpoint."
-      }
     },
     {
       "source_code": "EXCHANGERATES_URALS_USD_DAILY",
@@ -540,10 +677,12 @@
           "mode": "history_daily",
           "pair": "URALS/USD",
           "ajax": "hist",
-          "streaming_persistence": true,
+          "store_in_observations": true,
           "history_post": true,
           "history_form_encoding": "multipart",
           "browser_headers": true,
+          "history_refresh_session_before_request": true,
+          "history_refresh_session_on_403": true,
           "max_range_years": 5,
           "per": 90,
           "history_delay_min_seconds": 4.5,
@@ -561,11 +700,16 @@
       "series": [
         {
           "series_code": "EXCHANGERATES:URALSUSD:DAILY",
-          "series_name": "Urals crude oil, USD/bbl, daily close"
+          "series_name": "Urals crude oil, USD/bbl, daily close",
+          "frequency": "daily",
+          "group_code": "energy",
+          "subgroup_code": "oil_price_daily",
+          "description": "Daily Urals crude price, a fundamental oil factor for the ruble.",
+          "units": "USD per barrel"
         }
       ],
       "metadata": {
-        "note": "Uses the POST multipart history XHR JSON endpoint and splits requests into max 5-year date windows. Requires EXCHANGERATES_AJAX_NONCE and usually EXCHANGERATES_COOKIE from a browser session."
+        "note": "Uses the POST multipart history XHR JSON endpoint and splits requests into max 5-year date windows. The adapter first visits the history page to refresh the AJAX nonce and cookies, then retries once on 403 with the refreshed session."
       }
     },
     {
@@ -582,17 +726,33 @@
         "extra": {
           "mode": "live_html",
           "interval_minutes": 15,
+          "store_in_observations": true,
+          "exchange_timezone": "Europe/Moscow",
+          "trading_session_open_time": "10:00",
+          "daily_session_close_time": "18:45",
+          "russian_business_day_only": true,
+          "business_day_country_code": "ru",
+          "business_day_include_short_days": true,
+          "business_day_fail_closed": true,
+          "live_refresh_session_before_request": true,
+          "live_refresh_session_on_403": true,
+          "browser_headers": true,
           "referer": "https://www.exchangerates.org.uk/commodities/live-urals-crude-oil-prices/URALS-USD.html"
         }
       },
       "series": [
         {
           "series_code": "EXCHANGERATES:URALSUSD:LIVE15M",
-          "series_name": "Urals crude oil, USD/bbl, live 15m snapshot"
+          "series_name": "Urals crude oil, USD/bbl, live 15m snapshot",
+          "frequency": "15min",
+          "group_code": "energy",
+          "subgroup_code": "oil_price_intraday",
+          "description": "Intraday update of the oil factor, useful for 15-minute nowcasting.",
+          "units": "USD per barrel"
         }
       ],
       "metadata": {
-        "note": "Cron-friendly fallback: parses current page price and buckets it into 15-minute timestamps. This is a snapshot stream, not exchange-grade 15m OHLC history."
+        "note": "Parses the current page price into 15-minute observation buckets only during the configured Moscow trading session and only on Russian working days according to isdayoff.ru."
       }
     },
     {
@@ -613,6 +773,11 @@
           "ticker": "FX_IDC:USDRUB",
           "interval_minutes": 15,
           "history_interval": "1d",
+          "store_in_observations": true,
+          "exchange_timezone": "America/New_York",
+          "trading_session_open_time": "17:00",
+          "daily_session_close_time": "17:00",
+          "require_market_open": true,
           "backfill_enabled": true
         },
         "start_date": "01.01.2015"
@@ -620,7 +785,12 @@
       "series": [
         {
           "series_code": "FX_IDC:USDRUB",
-          "series_name": "U.S. Dollar / Russian Ruble"
+          "series_name": "U.S. Dollar / Russian Ruble",
+          "frequency": "15min",
+          "group_code": "fx_market",
+          "subgroup_code": "market_usdrub_proxy",
+          "description": "Market USD/RUB proxy that can provide more timely information than the official Bank of Russia rate.",
+          "units": "RUB per USD"
         }
       ]
     },
@@ -641,13 +811,23 @@
           "currency_id": "R01235",
           "char_code": "USD",
           "end_date_offset_days": 1,
+          "store_in_observations": true,
+          "rate_reference_start_time": "10:00",
+          "rate_reference_end_time": "15:30",
+          "backfill_published_time": "17:00",
+          "backfill_published_timezone": "Europe/Moscow",
           "invert": false
         }
       },
       "series": [
         {
           "series_code": "CBR:RUBUSD",
-          "series_name": "CBR official USD/RUB rate, RUB per 1 USD"
+          "series_name": "CBR official USD/RUB rate, RUB per 1 USD",
+          "frequency": "daily",
+          "group_code": "target",
+          "subgroup_code": "official_fx_rate",
+          "description": "Forecast target: the Bank of Russia official RUB/USD exchange rate.",
+          "units": "RUB per USD"
         }
       ],
       "metadata": {
@@ -659,8 +839,8 @@
       "source_name": "MOEX CNY/RUB TOM daily history",
       "source_type": "exchange",
       "adapter_name": "moex",
-      "enabled": true,
-      "schedule_cron": "10 20 * * 1-5",
+      "enabled": false,
+      "schedule_cron": null,
       "scrape": {
         "url": "https://iss.moex.com/iss/engines/currency/markets/selt/boards/CETS/securities/",
         "parser": "text",
@@ -668,15 +848,27 @@
         "start_date": "01.01.2015",
         "extra": {
           "mode": "history_daily",
-          "secid": "CNYRUB_TOM"
+          "secid": "CNYRUB_TOM",
+          "store_in_observations": true,
+          "timezone": "Europe/Moscow",
+          "daily_session_start_time": "07:00",
+          "daily_session_end_time": "23:50"
         }
       },
       "series": [
         {
           "series_code": "MOEX:CNYRUB_TOM",
-          "series_name": "MOEX CNY/RUB TOM, daily close"
+          "series_name": "MOEX CNY/RUB TOM, daily close",
+          "frequency": "daily",
+          "group_code": "fx_market",
+          "subgroup_code": "cnyrub_market",
+          "description": "Important market proxy for the ruble through CNY/RUB, especially when the role of USD/RUB on MOEX is limited.",
+          "units": "RUB per CNY"
         }
-      ]
+      ],
+      "metadata": {
+        "note": "One-off backfill source. Run manually when historical daily CNY/RUB TOM candles need to be loaded into observations."
+      }
     },
     {
       "source_code": "MOEX_RUBCNY_15M",
@@ -684,7 +876,7 @@
       "source_type": "exchange",
       "adapter_name": "moex",
       "enabled": true,
-      "schedule_cron": "*/15 * * * 1-5",
+      "schedule_cron": "*/15 * * * *",
       "scrape": {
         "url": "https://iss.moex.com/iss/engines/currency/markets/selt/boards/CETS/securities/",
         "parser": "text",
@@ -693,7 +885,11 @@
           "mode": "online_15m",
           "secid": "CNYRUB_TOM",
           "interval_minutes": 15,
-          "initial_lookback_days": 5,
+          "store_in_observations": true,
+          "require_trading_status_open": true,
+          "open_trading_statuses": ["T"],
+          "start_from_current_session": true,
+          "initial_lookback_days": 0,
           "max_latest_age_days": 30,
           "session_anchor_time": "09:50:00"
         }
@@ -701,11 +897,13 @@
       "series": [
         {
           "series_code": "MOEX:CNYRUB_TOM:15M",
-          "series_name": "MOEX CNY/RUB TOM, 15m close aggregated from 1m candles"
+          "series_name": "MOEX CNY/RUB TOM, 15m close aggregated from 1m candles",
+          "frequency": "15min",
+          "units": "RUB per CNY"
         }
       ],
       "metadata": {
-        "note": "MOEX ISS does not publish native interval=15 candles; this source aggregates ISS interval=1 candles into closed 15-minute bars."
+        "note": "Runs every calendar day and uses MOEX ISS marketdata.TRADINGSTATUS to skip periods when the trading session is not open. MOEX ISS does not publish native interval=15 candles; this source aggregates ISS interval=1 candles into closed 15-minute bars."
       }
     },
     {
@@ -713,8 +911,8 @@
       "source_name": "MOEX Index daily history",
       "source_type": "exchange",
       "adapter_name": "moex",
-      "enabled": true,
-      "schedule_cron": "10 20 * * 1-5",
+      "enabled": false,
+      "schedule_cron": null,
       "scrape": {
         "url": "https://iss.moex.com/iss/engines/stock/markets/index/boards/SNDX/securities/IMOEX",
         "parser": "text",
@@ -722,15 +920,24 @@
         "start_date": "01.01.2015",
         "extra": {
           "mode": "history_daily",
-          "secid": "IMOEX"
+          "secid": "IMOEX",
+          "store_in_observations": true,
+          "timezone": "Europe/Moscow",
+          "daily_session_start_time": "09:50",
+          "daily_session_end_time": "18:50"
         }
       },
       "series": [
         {
           "series_code": "MOEX:IMOEX",
-          "series_name": "MOEX Russia Index, daily close"
+          "series_name": "MOEX Russia Index, daily close",
+          "frequency": "daily",
+          "units": "index_points"
         }
-      ]
+      ],
+      "metadata": {
+        "note": "One-off backfill source. Run manually when historical daily MOEX index candles need to be loaded into observations."
+      }
     },
     {
       "source_code": "MOEX_IMOEX_15M",
@@ -738,7 +945,7 @@
       "source_type": "exchange",
       "adapter_name": "moex",
       "enabled": true,
-      "schedule_cron": "*/15 * * * 1-5",
+      "schedule_cron": "*/15 * * * *",
       "scrape": {
         "url": "https://iss.moex.com/iss/engines/stock/markets/index/boards/SNDX/securities/IMOEX",
         "parser": "text",
@@ -747,19 +954,27 @@
           "mode": "online_15m",
           "secid": "IMOEX",
           "interval_minutes": 15,
-          "initial_lookback_days": 5,
+          "store_in_observations": true,
+          "require_trading_status_open": true,
+          "trading_status_field": "TRADINGSESSION",
+          "open_trading_statuses": ["1"],
+          "start_from_current_session": true,
+          "initial_lookback_days": 0,
           "max_latest_age_days": 30,
+          "live_published_at_max_lag_seconds": 3600,
           "session_anchor_time": "09:50:00"
         }
       },
       "series": [
         {
           "series_code": "MOEX:IMOEX:15M",
-          "series_name": "MOEX Russia Index, 15m close aggregated from 1m candles"
+          "series_name": "MOEX Russia Index, 15m close aggregated from 1m candles",
+          "frequency": "15min",
+          "units": "index_points"
         }
       ],
       "metadata": {
-        "note": "MOEX ISS does not publish native interval=15 candles; this source aggregates ISS interval=1 candles into closed 15-minute bars."
+        "note": "Runs every calendar day and uses MOEX ISS marketdata.TRADINGSESSION to skip periods when the index session is not open. MOEX ISS does not publish native interval=15 candles; this source aggregates ISS interval=1 candles into closed 15-minute bars."
       }
     },
     {
@@ -767,8 +982,8 @@
       "source_name": "RTS Index daily history",
       "source_type": "exchange",
       "adapter_name": "moex",
-      "enabled": true,
-      "schedule_cron": "10 20 * * 1-5",
+      "enabled": false,
+      "schedule_cron": null,
       "scrape": {
         "url": "https://iss.moex.com/iss/engines/stock/markets/index/boards/SNDX/securities/RTSI",
         "parser": "text",
@@ -776,15 +991,28 @@
         "start_date": "01.01.2015",
         "extra": {
           "mode": "history_daily",
-          "secid": "RTSI"
+          "secid": "RTSI",
+          "board": "RTSI",
+          "store_in_observations": true,
+          "timezone": "Europe/Moscow",
+          "daily_session_start_time": "09:50",
+          "daily_session_end_time": "18:55"
         }
       },
       "series": [
         {
           "series_code": "MOEX:RTSI",
-          "series_name": "RTS Index, daily close"
+          "series_name": "RTS Index, daily close",
+          "frequency": "daily",
+          "group_code": "ru_market_risk",
+          "subgroup_code": "equity_index_daily",
+          "description": "RTS Index, a proxy for Russian equity and risk sentiment.",
+          "units": "index_points"
         }
-      ]
+      ],
+      "metadata": {
+        "note": "One-off backfill source. Run manually when historical daily RTS index candles need to be loaded into observations."
+      }
     },
     {
       "source_code": "MOEX_RTSI_15M",
@@ -792,7 +1020,7 @@
       "source_type": "exchange",
       "adapter_name": "moex",
       "enabled": true,
-      "schedule_cron": "*/15 * * * 1-5",
+      "schedule_cron": "*/15 * * * *",
       "scrape": {
         "url": "https://iss.moex.com/iss/engines/stock/markets/index/boards/SNDX/securities/RTSI",
         "parser": "text",
@@ -800,20 +1028,32 @@
         "extra": {
           "mode": "online_15m",
           "secid": "RTSI",
+          "board": "RTSI",
           "interval_minutes": 15,
-          "initial_lookback_days": 5,
+          "store_in_observations": true,
+          "require_trading_status_open": true,
+          "trading_status_field": "TRADINGSESSION",
+          "open_trading_statuses": ["1"],
+          "start_from_current_session": true,
+          "initial_lookback_days": 0,
           "max_latest_age_days": 30,
-          "session_anchor_time": "10:00:00"
+          "live_published_at_max_lag_seconds": 3600,
+          "session_anchor_time": "09:50:00"
         }
       },
       "series": [
         {
           "series_code": "MOEX:RTSI:15M",
-          "series_name": "RTS Index, 15m close aggregated from 1m candles"
+          "series_name": "RTS Index, 15m close aggregated from 1m candles",
+          "frequency": "15min",
+          "group_code": "ru_market_risk",
+          "subgroup_code": "equity_index_intraday",
+          "description": "Intraday RTS Index, a timely Russian market risk sentiment indicator.",
+          "units": "index_points"
         }
       ],
       "metadata": {
-        "note": "MOEX ISS does not publish native interval=15 candles; this source aggregates ISS interval=1 candles into closed 15-minute bars."
+        "note": "Runs every calendar day and uses MOEX ISS marketdata.TRADINGSESSION to skip periods when the RTS index session is not open. MOEX ISS does not publish native interval=15 candles; this source aggregates ISS interval=1 candles into closed 15-minute bars."
       }
     },
     {
@@ -825,7 +1065,7 @@
       "source_type": "api",
       "adapter_name": "cbr",
       "enabled": true,
-      "schedule_cron": "15 12 * * 1-5",
+      "schedule_cron": "*/15 * * * *",
       "scrape": {
         "url": "https://www.cbr.ru/hd_base/KeyRate/",
         "parser": "text",
@@ -833,17 +1073,26 @@
         "start_date": "01.01.2015",
         "extra": {
           "mode": "key_rate_history",
-          "end_date_offset_days": 1
+          "end_date_offset_days": 1,
+          "store_in_observations": true,
+          "key_rate_calendar_url": "https://www.cbr.ru/eng/dkp/cal_mp/",
+          "update_same_published_reference_end": true,
+          "delete_non_publication_observations": true
         }
       },
       "series": [
         {
           "series_code": "CBR:KEY_RATE",
-          "series_name": "Bank of Russia key rate, percent per annum"
+          "series_name": "Bank of Russia key rate, percent per annum",
+          "frequency": "daily",
+          "group_code": "ru_rates",
+          "subgroup_code": "monetary_policy",
+          "description": "Bank of Russia key rate, the core monetary policy factor.",
+          "units": "percent per annum"
         }
       ],
       "metadata": {
-        "note": "Backfills and updates the Bank of Russia key rate from the official KeyRate page. Values are stored as annual percent points."
+        "note": "Backfills and updates the Bank of Russia key rate from the official KeyRate page. Values are stored only at CBR key-rate decision publication times. reference_start and published_at are the decision publication timestamp; reference_end is extended until the next decision publication minus one millisecond, or to the current load time for the latest decision."
       }
     },
     {
@@ -860,45 +1109,39 @@
         "start_date": "01.01.2015",
         "extra": {
           "mode": "key_rate_meetings",
-          "end_date_offset_days": 365
+          "end_date_offset_days": 365,
+          "store_in_observations": true,
+          "refresh_all_observations": true,
+          "replace_table_observations": true,
+          "calendar_publication_dates": {
+            "2015": "2014-11-10",
+            "2016": "2015-11-10",
+            "2017": "2016-11-11",
+            "2018": "2017-11-10",
+            "2019": "2018-11-21",
+            "2020": "2019-10-29",
+            "2021": "2020-09-10",
+            "2022": "2021-11-09",
+            "2023": "2022-11-02",
+            "2024": "2023-11-02",
+            "2025": "2024-10-30",
+            "2026": "2025-10-27"
+          }
         }
       },
       "series": [
         {
           "series_code": "CBR:KEY_RATE_MEETING_DUMMY",
-          "series_name": "Bank of Russia key rate meeting dummy"
+          "series_name": "Bank of Russia key rate meeting dummy",
+          "frequency": "daily",
+          "group_code": "ru_rates",
+          "subgroup_code": "monetary_policy_event",
+          "description": "Bank of Russia meeting dummy, capturing monetary policy event risk.",
+          "units": "dummy"
         }
       ],
       "metadata": {
-        "note": "Backfills and updates a 0/1 event dummy for Bank of Russia key rate meetings from the official calendar of key rate decisions. Observations use the expected press-release publication time from the CBR page, converted from Moscow time to UTC; downstream feature tables should fill non-meeting dates with 0."
-      }
-    },
-    {
-      "source_code": "CBR_KEY_RATE_DECISION_PUBLICATIONS",
-      "source_name": "CBR key rate decision publication dummy",
-      "source_type": "api",
-      "adapter_name": "cbr",
-      "enabled": true,
-      "schedule_cron": "0 8 * * 1",
-      "scrape": {
-        "url": "https://www.cbr.ru/dkp/cal_mp/",
-        "parser": "text",
-        "series_code": "CBR:KEY_RATE_DECISION_PUBLICATION_DUMMY",
-        "start_date": "01.01.2015",
-        "extra": {
-          "mode": "key_rate_decision_publications",
-          "event_type": "key_rate_decision_publication",
-          "end_date_offset_days": 365
-        }
-      },
-      "series": [
-        {
-          "series_code": "CBR:KEY_RATE_DECISION_PUBLICATION_DUMMY",
-          "series_name": "Bank of Russia key rate decision publication dummy"
-        }
-      ],
-      "metadata": {
-        "note": "Backfills and updates a 0/1 event dummy for publication of Bank of Russia key rate decisions. Observed_at and publication_at use the expected press-release publication time from the official CBR calendar, converted from Moscow time to UTC; downstream feature tables should fill non-publication timestamps with 0."
+        "note": "Backfills and updates a 0/1 event dummy for Bank of Russia key rate meetings from the official calendar of key rate decisions. Values are stored in observations only. reference_start and reference_end use the expected press-release publication time from the CBR page, converted from Moscow time to UTC. For backfill, planned meetings use the publication date of that year's calendar and unscheduled meetings use the meeting publication date; live updates use the page's Last updated date."
       }
     },
     {
@@ -907,7 +1150,7 @@
       "source_type": "api",
       "adapter_name": "cbr",
       "enabled": true,
-      "schedule_cron": "30 12 * * 1-5",
+      "schedule_cron": "*/15 * * * *",
       "scrape": {
         "url": "https://www.cbr.ru/hd_base/ruonia/dynamics/",
         "parser": "text",
@@ -916,6 +1159,9 @@
         "extra": {
           "mode": "ruonia_dynamics",
           "end_date_offset_days": 1,
+          "store_in_observations": true,
+          "backfill_published_time": "15:00",
+          "backfill_published_timezone": "Europe/Moscow",
           "series": [
             {
               "series_code": "RUONIA_RATE",
@@ -955,35 +1201,75 @@
       "series": [
         {
           "series_code": "RUONIA_RATE",
-          "series_name": "RUONIA rate, percent per annum"
+          "series_name": "RUONIA rate, percent per annum",
+          "frequency": "daily",
+          "group_code": "ru_rates",
+          "subgroup_code": "money_market_rate",
+          "description": "Actual overnight ruble money market rate.",
+          "units": "percent per annum"
         },
         {
           "series_code": "RUONIA_VOLUME",
-          "series_name": "RUONIA transactions volume, billion RUB"
+          "series_name": "RUONIA transactions volume, billion RUB",
+          "frequency": "daily",
+          "group_code": "ru_rates",
+          "subgroup_code": "money_market_liquidity",
+          "description": "RUONIA transaction volume, a proxy for money market liquidity.",
+          "units": "billion RUB"
         },
         {
           "series_code": "RUONIA_TRADES_COUNT",
-          "series_name": "RUONIA transactions count"
+          "series_name": "RUONIA transactions count",
+          "frequency": "daily",
+          "group_code": "ru_rates",
+          "subgroup_code": "money_market_activity",
+          "description": "Number of RUONIA trades, a measure of money market activity.",
+          "units": "count"
         },
         {
           "series_code": "RUONIA_PARTICIPANTS_COUNT",
-          "series_name": "RUONIA participants count"
+          "series_name": "RUONIA participants count",
+          "frequency": "daily",
+          "group_code": "ru_rates",
+          "subgroup_code": "money_market_activity",
+          "description": "Number of RUONIA participants, a measure of market depth.",
+          "units": "count"
         },
         {
           "series_code": "RUONIA_MIN_RATE",
-          "series_name": "RUONIA minimum rate, percent per annum"
+          "series_name": "RUONIA minimum rate, percent per annum",
+          "frequency": "daily",
+          "group_code": "ru_rates",
+          "subgroup_code": "money_market_distribution",
+          "description": "Lower bound of RUONIA rates.",
+          "units": "percent per annum"
         },
         {
           "series_code": "RUONIA_P25_RATE",
-          "series_name": "RUONIA 25th percentile rate, percent per annum"
+          "series_name": "RUONIA 25th percentile rate, percent per annum",
+          "frequency": "daily",
+          "group_code": "ru_rates",
+          "subgroup_code": "money_market_distribution",
+          "description": "25th percentile of RUONIA rates, describing the shape of the rate distribution.",
+          "units": "percent per annum"
         },
         {
           "series_code": "RUONIA_P75_RATE",
-          "series_name": "RUONIA 75th percentile rate, percent per annum"
+          "series_name": "RUONIA 75th percentile rate, percent per annum",
+          "frequency": "daily",
+          "group_code": "ru_rates",
+          "subgroup_code": "money_market_distribution",
+          "description": "75th percentile of RUONIA rates, describing the shape of the rate distribution.",
+          "units": "percent per annum"
         },
         {
           "series_code": "RUONIA_MAX_RATE",
-          "series_name": "RUONIA maximum rate, percent per annum"
+          "series_name": "RUONIA maximum rate, percent per annum",
+          "frequency": "daily",
+          "group_code": "ru_rates",
+          "subgroup_code": "money_market_distribution",
+          "description": "Upper bound of RUONIA rates, reflecting stress or dispersion in the money market.",
+          "units": "percent per annum"
         }
       ],
       "metadata": {
@@ -996,7 +1282,7 @@
       "source_type": "api",
       "adapter_name": "cbr",
       "enabled": true,
-      "schedule_cron": "*/2 * * * *",
+      "schedule_cron": "*/15 * * * *",
       "scrape": {
         "url": "https://www.cbr.ru/statistics/macro_itm/dkfs/",
         "parser": "text",
@@ -1004,7 +1290,7 @@
         "extra": {
           "mode": "credit_m2x",
           "global_series_latest": true,
-          "preserve_vintage_at": true,
+          "store_in_observations": true,
           "end_date_offset_days": 31,
           "publication_at_fallback": "estimated_same_month_day",
           "publication_at_fallback_day": 22,
@@ -1027,15 +1313,30 @@
       "series": [
         {
           "series_code": "RU_M2",
-          "series_name": "Russia money supply M2, billion RUB"
+          "series_name": "Russia money supply M2, billion RUB",
+          "frequency": "monthly",
+          "group_code": "ru_credit_money",
+          "subgroup_code": "money_supply",
+          "description": "M2 money supply, an indicator of ruble liquidity.",
+          "units": "billion RUB"
         },
         {
           "series_code": "RU_CREDIT_HOUSEHOLDS",
-          "series_name": "Russia household loans, billion RUB"
+          "series_name": "Russia household loans, billion RUB",
+          "frequency": "monthly",
+          "group_code": "ru_credit_money",
+          "subgroup_code": "credit",
+          "description": "Household loans, a proxy for domestic demand and credit activity.",
+          "units": "billion RUB"
         },
         {
           "series_code": "RU_CREDIT_CORPORATES",
-          "series_name": "Russia corporate loans, billion RUB"
+          "series_name": "Russia corporate loans, billion RUB",
+          "frequency": "monthly",
+          "group_code": "ru_credit_money",
+          "subgroup_code": "credit",
+          "description": "Corporate loans, a proxy for the credit cycle.",
+          "units": "billion RUB"
         }
       ],
       "metadata": {
@@ -1047,16 +1348,22 @@
       "source_name": "CBR banking sector structural liquidity",
       "source_type": "api",
       "adapter_name": "cbr_secinfo",
-      "enabled": false,
-      "schedule_cron": "30 11 * * 1-5",
+      "enabled": true,
+      "schedule_cron": "*/15 * * * *",
       "scrape": {
         "url": "https://www.cbr.ru/secinfo/secinfo.asmx",
         "parser": "text",
         "date_column": "DT",
-        "start_date": "01.01.2024",
+        "start_date": "01.01.2015",
         "extra": {
           "operation": "BliquidityXML",
           "row_tag": "BL",
+          "store_in_observations": true,
+          "backfill_published_time": "10:00",
+          "backfill_published_timezone": "Europe/Moscow",
+          "live_published_at_loaded_at": true,
+          "update_same_value_published_at": true,
+          "revision_check_observations": 60,
           "params": {
             "OnDate": "$start_date",
             "ToDate": "$end_date"
@@ -1076,7 +1383,8 @@
             },
             {
               "series_code": "CBR:BLIQUIDITY:AVG_RR",
-              "value_column": "AVGRR"
+              "value_column": "AVGRR",
+              "skip_equal_to_previous": true
             }
           ]
         }
@@ -1084,19 +1392,27 @@
       "series": [
         {
           "series_code": "CBR:BLIQUIDITY:STR_LI_DEF",
-          "series_name": "CBR structural liquidity deficit/surplus"
+          "series_name": "CBR structural liquidity deficit/surplus",
+          "frequency": "daily",
+          "units": "billion RUB"
         },
         {
           "series_code": "CBR:BLIQUIDITY:STR_LI_DEF_NEW",
-          "series_name": "CBR structural liquidity deficit/surplus, new methodology"
+          "series_name": "CBR structural liquidity deficit/surplus, new methodology",
+          "frequency": "daily",
+          "units": "billion RUB"
         },
         {
           "series_code": "CBR:BLIQUIDITY:CORR_ACC",
-          "series_name": "Credit institutions correspondent accounts with CBR"
+          "series_name": "Credit institutions correspondent accounts with CBR",
+          "frequency": "daily",
+          "units": "billion RUB"
         },
         {
           "series_code": "CBR:BLIQUIDITY:AVG_RR",
-          "series_name": "Average required reserves"
+          "series_name": "Average required reserves",
+          "frequency": "daily",
+          "units": "billion RUB"
         }
       ],
       "metadata": {
@@ -1119,6 +1435,7 @@
           "operation": "zcyc_paramsXML",
           "row_tag": "ZCYC",
           "kind": "quote",
+          "store_in_observations": true,
           "max_range_days": 366,
           "params": {
             "OnDate": "$start_date",
@@ -1147,19 +1464,39 @@
       "series": [
         {
           "series_code": "CBR:OFZ:ZCYC:1Y",
-          "series_name": "CBR OFZ zero-coupon yield curve, 1Y"
+          "series_name": "CBR OFZ zero-coupon yield curve, 1Y",
+          "frequency": "daily",
+          "group_code": "ru_rates",
+          "subgroup_code": "ofz_curve",
+          "description": "Short end of the OFZ curve, reflecting Bank of Russia rate expectations and ruble yields.",
+          "units": "percent per annum"
         },
         {
           "series_code": "CBR:OFZ:ZCYC:3Y",
-          "series_name": "CBR OFZ zero-coupon yield curve, 3Y"
+          "series_name": "CBR OFZ zero-coupon yield curve, 3Y",
+          "frequency": "daily",
+          "group_code": "ru_rates",
+          "subgroup_code": "ofz_curve",
+          "description": "Middle segment of the OFZ curve, reflecting monetary policy expectations.",
+          "units": "percent per annum"
         },
         {
           "series_code": "CBR:OFZ:ZCYC:5Y",
-          "series_name": "CBR OFZ zero-coupon yield curve, 5Y"
+          "series_name": "CBR OFZ zero-coupon yield curve, 5Y",
+          "frequency": "daily",
+          "group_code": "ru_rates",
+          "subgroup_code": "ofz_curve",
+          "description": "Medium-term ruble yield from the OFZ zero-coupon curve.",
+          "units": "percent per annum"
         },
         {
           "series_code": "CBR:OFZ:ZCYC:10Y",
-          "series_name": "CBR OFZ zero-coupon yield curve, 10Y"
+          "series_name": "CBR OFZ zero-coupon yield curve, 10Y",
+          "frequency": "daily",
+          "group_code": "ru_rates",
+          "subgroup_code": "ofz_curve",
+          "description": "Long end of the OFZ curve, reflecting risk premium and long-term expectations.",
+          "units": "percent per annum"
         }
       ],
       "metadata": {
@@ -1170,255 +1507,150 @@
       "_comment": "Nowcast group: Russia prices, activity, and external trade"
     },
     {
-      "source_code": "RU_CPI_MOM_CSV",
-      "source_name": "Russia CPI MoM – historical CSV (statbureau.org)",
-      "source_type": "manual",
-      "adapter_name": "manual_csv",
-      "enabled": true,
-      "schedule_cron": null,
-      "csv": {
-        "path": "storage/exports/russia.cpi.monthly.long.csv",
-        "delimiter": ",",
-        "date_column": "period",
-        "value_column": "value_mom",
-        "series_code": "RU_CPI_MOM",
-        "date_format": "%Y-%m-%d",
-        "release_date_column": "release_date"
-      },
-      "series": [
-        {
-          "series_code": "RU_CPI_MOM",
-          "series_name": "Russia CPI inflation, month-over-month, percent"
-        }
-      ],
-      "metadata": {
-        "note": "Historical backfill from storage/exports/russia.cpi.monthly.long.csv (generated by build_ru_cpi_long.py). Source: statbureau.org (Rosstat data), from 2015-01-01 through latest available. Release dates: FRED realtime_start for 2015-Mar 2022, estimated (4th business day of following month) for 2022+. This source is for one-off backfill; use STATBUREAU_RU_CPI_MOM for ongoing updates."
-      }
-    },
-    {
-      "source_code": "STATBUREAU_RU_CPI_MOM",
-      "source_name": "statbureau.org Russia CPI MoM – live feed",
+      "source_code": "ROSSTAT_RU_CPI_MOM_LIVE",
+      "source_name": "Rosstat Russia CPI MoM – official live workbook",
       "source_type": "web",
-      "adapter_name": "web",
+      "adapter_name": "rosstat_cpi_live",
       "enabled": true,
-      "schedule_cron": "0 8 * * *",
+      "schedule_cron": "*/15 * * * *",
       "scrape": {
-        "url": "https://www.statbureau.org/get-data-json",
-        "parser": "json",
-        "params": {
-          "country": "russia",
-          "start": "2015/1/1",
-          "end": "2030/1/1"
-        },
-        "date_column": "MonthFormatted",
-        "value_column": "InflationRateRounded",
-        "series_code": "RU_CPI_MOM",
-        "start_date": "2015-01-01",
-        "extra": {
-          "global_series_latest": true,
-          "publication_at_nth_bday_next_month": 4
-        }
-      },
-      "series": [
-        {
-          "series_code": "RU_CPI_MOM",
-          "series_name": "Russia CPI inflation, month-over-month, percent"
-        }
-      ],
-      "metadata": {
-        "note": "Fetches MoM CPI for Russia from statbureau.org free JSON API (get-data-json?country=russia). Source: statbureau.org aggregates official Rosstat CPI releases. Rosstat publishes data in two phases: preliminary (1 decimal) on the ~4th business day of the following month, final (2 decimals) around the middle of the month. Runs daily; deduplication handled by the DB unique constraint. No API key required. Attribution: link to statbureau.org is required per their terms."
-      }
-    },
-    {
-      "source_code": "CBR_RU_CPI_YOY",
-      "source_name": "CBR Russia CPI YoY – live feed",
-      "source_type": "web",
-      "adapter_name": "cbr",
-      "enabled": true,
-      "schedule_cron": "*/2 * * * *",
-      "scrape": {
-        "start_date": "2015-01-01",
-        "extra": {
-          "mode": "inflation_dynamics",
-          "publication_at_nth_bday_next_month": 4
-        }
-      },
-      "series": [
-        {
-          "series_code": "RU_CPI_YOY",
-          "series_name": "Russia CPI inflation, year-over-year, percent"
-        }
-      ],
-      "metadata": {
-        "note": "Live YoY CPI feed from CBR statistics page (https://www.cbr.ru/statistics/ddkp/infl/). CBR republishes official Rosstat data. Date format on page is MM.YYYY mapped to the first of each month. publication_at set to the 4th business day of the following month (Rosstat preliminary release schedule). Runs daily at 09:00; incremental via latest_observed_at."
-      }
-    },
-    {
-      "source_code": "RU_INDUSTRIAL_PRODUCTION_CSV",
-      "source_name": "Russia industrial production index YoY - historical CSV (Rosstat)",
-      "source_type": "manual",
-      "adapter_name": "manual_csv",
-      "enabled": true,
-      "schedule_cron": null,
-      "csv": {
-        "path": "storage/exports/russia.industrial_production.monthly.yoy.csv",
-        "delimiter": ",",
-        "date_column": "observed_at",
-        "value_column": "value",
-        "series_code": "RU_INDUSTRIAL_PRODUCTION",
-        "date_format": "%Y-%m-%d",
-        "release_date_column": "published_at",
-        "vintage_date_column": "vintage_at"
-      },
-      "series": [
-        {
-          "series_code": "RU_INDUSTRIAL_PRODUCTION",
-          "series_name": "Russia industrial production index, percent of corresponding month previous year"
-        }
-      ],
-      "metadata": {
-        "note": "Historical monthly backfill from storage/exports/russia.industrial_production.monthly.yoy.csv, generated by storage/exports/build_ru_industrial_production.py from Rosstat enterprise_industrial XLSX files. Indicator: industrial production index for the Russian Federation, OKVED2 BCDE, percent of the corresponding month of the previous year. Range starts at 2015-01-01. published_at is filled from Rosstat news-release dates where available on the current Rosstat site; older periods without a discoverable current-site release date are left blank. vintage_at is the update date of the source XLSX vintage."
-      }
-    },
-    {
-      "source_code": "ROSSTAT_RU_INDUSTRIAL_PRODUCTION",
-      "source_name": "Rosstat Russia industrial production index YoY - live feed",
-      "source_type": "web",
-      "adapter_name": "rosstat_industrial",
-      "enabled": true,
-      "schedule_cron": "*/2 * * * *",
-      "scrape": {
-        "url": "https://rosstat.gov.ru/enterprise_industrial",
+        "url": "https://rosstat.gov.ru/statistics/price",
         "parser": "text",
-        "series_code": "RU_INDUSTRIAL_PRODUCTION",
+        "series_code": "RU_CPI_MOM_ROSSTAT_LIVE",
         "start_date": "2015-01-01",
         "extra": {
-          "global_series_latest": true,
-          "preserve_vintage_at": true,
-          "news_pages": 6
+          "store_in_observations": true,
+          "latest_only": false,
+          "revision_check_observations": 2,
+          "backfill_publication_day_next_month": 15,
+          "backfill_publication_time": "10:00",
+          "publication_timezone": "Europe/Moscow"
         }
       },
       "series": [
         {
-          "series_code": "RU_INDUSTRIAL_PRODUCTION",
-          "series_name": "Russia industrial production index, percent of corresponding month previous year"
+          "series_code": "RU_CPI_MOM_ROSSTAT_LIVE",
+          "series_name": "Russia CPI inflation, month-over-month, percent – Rosstat live",
+          "frequency": "monthly",
+          "group_code": "ru_macro",
+          "subgroup_code": "inflation",
+          "description": "Official Rosstat monthly CPI MoM live check from the latest ipc_mes workbook on the Rosstat prices page.",
+          "units": "percent"
         }
       ],
       "metadata": {
-        "note": "Live updater for RU_INDUSTRIAL_PRODUCTION. Each run reads Rosstat enterprise_industrial, parses current ind_baza_* XLSX files for OKVED2 BCDE, compares against the latest stored RU_INDUSTRIAL_PRODUCTION observation globally, and inserts only newly published months. publication_at is resolved from recent Rosstat news releases where available; vintage_at is the update date of the source XLSX file."
+        "note": "Separate live-only Rosstat CPI MoM series. The adapter checks https://rosstat.gov.ru/statistics/price every 15 minutes, downloads the latest ipc_mes_*.xlsx workbook, takes all all-items monthly CPI index rows from sheet 01 since scrape.start_date, stores value as index minus 100, and writes directly to observations. For backfill, published_at is the configured typical Rosstat publication date: the 15th day of the following month at 10:00 Europe/Moscow. In live mode, published_at is the actual ingestion timestamp."
       }
     },
     {
-      "source_code": "RU_RETAIL_SALES_CSV",
-      "source_name": "Russia retail sales - historical CSV (Rosstat)",
-      "source_type": "manual",
-      "adapter_name": "manual_csv",
-      "enabled": true,
-      "schedule_cron": null,
-      "csv": {
-        "path": "storage/exports/russia.retail_sales.monthly.csv",
-        "delimiter": ",",
-        "date_column": "observed_at",
-        "value_column": "value",
-        "series_code": "RU_RETAIL_SALES",
-        "date_format": "%Y-%m-%d",
-        "release_date_column": "publication_at",
-        "vintage_date_column": "vintage_at"
-      },
-      "series": [
-        {
-          "series_code": "RU_RETAIL_SALES",
-          "series_name": "Russia retail trade turnover, million RUB, current prices"
-        }
-      ],
-      "metadata": {
-        "note": "Historical monthly backfill from storage/exports/russia.retail_sales.monthly.csv, generated by storage/exports/build_ru_retail_sales.py from Rosstat retail trade files on https://rosstat.gov.ru/statistics/roznichnayatorgovlya. Indicator: total retail trade turnover for the Russian Federation, million RUB, current prices. Range starts at 2015-01-01. publication_at and vintage_at are the Rosstat document publication/update date shown on the source page."
-      }
-    },
-    {
-      "source_code": "ROSSTAT_RU_RETAIL_SALES",
-      "source_name": "Rosstat Russia retail sales - live feed",
+      "source_code": "ROSSTAT_RU_CPI_INDUSTRIAL_PROD_MOM_LIVE",
+      "source_name": "Rosstat Russia industrial producer prices MoM – official live workbook",
       "source_type": "web",
-      "adapter_name": "rosstat_retail_sales",
+      "adapter_name": "rosstat_industrial_producer_cpi_live",
       "enabled": true,
-      "schedule_cron": "*/2 * * * *",
+      "schedule_cron": "*/15 * * * *",
+      "scrape": {
+        "url": "https://rosstat.gov.ru/statistics/price",
+        "parser": "text",
+        "series_code": "RU_CPI_INDUSTRIAL_PROD_MOM_ROSSTAT_LIVE",
+        "start_date": "2015-01-01",
+        "extra": {
+          "store_in_observations": true,
+          "latest_only": false,
+          "revision_check_observations": 2,
+          "backfill_publication_day_next_month": 20,
+          "backfill_publication_time": "10:00",
+          "publication_timezone": "Europe/Moscow"
+        }
+      },
+      "series": [
+        {
+          "series_code": "RU_CPI_INDUSTRIAL_PROD_MOM_ROSSTAT_LIVE",
+          "series_name": "Russia industrial producer prices, month-over-month, percent – Rosstat live",
+          "frequency": "monthly",
+          "group_code": "ru_macro",
+          "subgroup_code": "inflation",
+          "description": "Official Rosstat producer price index for industry, month-over-month, from the latest Proizvoditeli_Ind_VED workbook on the Rosstat prices page.",
+          "units": "percent"
+        }
+      ],
+      "metadata": {
+        "note": "Separate live Rosstat industrial producer prices MoM series. The adapter checks https://rosstat.gov.ru/statistics/price every 15 minutes, downloads the latest Proizvoditeli_Ind_VED_MM-YYYY.xlsx workbook from the Industrial goods producer prices section, takes the aggregate industry row for the Russian Federation, stores value as index minus 100, and writes directly to observations. For backfill, published_at is the configured typical Rosstat publication date: the 20th day of the following month at 10:00 Europe/Moscow. In live mode, published_at is the actual ingestion timestamp."
+      }
+    },
+    {
+      "source_code": "ROSSTAT_RU_RETAIL_MOM_LIVE",
+      "source_name": "Rosstat Russia retail trade turnover MoM – official live workbook",
+      "source_type": "web",
+      "adapter_name": "rosstat_retail_mom_live",
+      "enabled": true,
+      "schedule_cron": "*/15 * * * *",
       "scrape": {
         "url": "https://rosstat.gov.ru/statistics/roznichnayatorgovlya",
         "parser": "text",
-        "series_code": "RU_RETAIL_SALES",
+        "series_code": "RU_RETAIL_MOM_ROSSTAT_LIVE",
         "start_date": "2015-01-01",
         "extra": {
-          "global_series_latest": true,
-          "preserve_vintage_at": true
+          "store_in_observations": true,
+          "latest_only": false,
+          "revision_check_observations": 2,
+          "backfill_publication_day_next_month": 29,
+          "backfill_publication_time": "10:00",
+          "publication_timezone": "Europe/Moscow"
         }
       },
       "series": [
         {
-          "series_code": "RU_RETAIL_SALES",
-          "series_name": "Russia retail trade turnover, million RUB, current prices"
+          "series_code": "RU_RETAIL_MOM_ROSSTAT_LIVE",
+          "series_name": "Russia retail trade turnover, month-over-month, percent – Rosstat live",
+          "frequency": "monthly",
+          "group_code": "ru_macro",
+          "subgroup_code": "real_activity",
+          "description": "Official Rosstat retail trade turnover MoM calculated from monthly turnover levels in the latest Oborot workbooks.",
+          "units": "percent"
         }
       ],
       "metadata": {
-        "note": "Live updater for RU_RETAIL_SALES. Each run reads Rosstat retail trade XLS/XLSX files, compares against the latest stored RU_RETAIL_SALES observation globally, and inserts only newly published months. publication_at and vintage_at are set to the Rosstat document publication/update date from the source page."
+        "note": "Separate live Rosstat retail turnover MoM series. The adapter checks https://rosstat.gov.ru/statistics/roznichnayatorgovlya every 15 minutes, downloads the latest Oborot_*.xls and Oborot_m_*.xlsx retail turnover workbooks, calculates MoM as current monthly turnover divided by previous monthly turnover minus 1, and writes directly to observations. For backfill, published_at is the configured typical Rosstat publication date: the 29th day of the following month at 10:00 Europe/Moscow. In live mode, published_at is the actual ingestion timestamp."
       }
     },
     {
-      "source_code": "RU_TRADE_BALANCE_CSV",
-      "source_name": "Russia trade balance - historical CSV (CBR)",
-      "source_type": "manual",
-      "adapter_name": "manual_csv",
-      "enabled": true,
-      "schedule_cron": null,
-      "csv": {
-        "path": "storage/exports/russia.trade_balance.monthly.csv",
-        "delimiter": ",",
-        "date_column": "observed_at",
-        "value_column": "value",
-        "series_code": "RU_TRADE_BALANCE",
-        "date_format": "%Y-%m-%d",
-        "release_date_column": "publication_at",
-        "vintage_date_column": "vintage_at"
-      },
-      "series": [
-        {
-          "series_code": "RU_TRADE_BALANCE",
-          "series_name": "Russia goods trade balance, million USD, balance of payments methodology"
-        }
-      ],
-      "metadata": {
-        "note": "Historical monthly backfill from storage/exports/russia.trade_balance.monthly.csv, generated by storage/exports/build_ru_trade_balance.py from the official Bank of Russia trade.xls file on https://www.cbr.ru/statistics/macro_itm/external_sector/etg/. Indicator: goods exports FOB minus goods imports FOB, million USD, balance of payments methodology. Range starts at 2015-01-01. publication_at and vintage_at are the Bank of Russia file update date shown in the source workbook, with HTTP Last-Modified as fallback."
-      }
-    },
-    {
-      "source_code": "CBR_RU_TRADE_BALANCE",
-      "source_name": "CBR Russia trade balance - live feed",
+      "source_code": "CBR_RU_TRADE_BALANCE_LIVE",
+      "source_name": "CBR Russia trade balance - live file check",
       "source_type": "web",
       "adapter_name": "cbr_trade_balance",
       "enabled": true,
-      "schedule_cron": "*/2 * * * *",
+      "schedule_cron": "*/15 * * * *",
       "scrape": {
         "url": "https://www.cbr.ru/vfs/statistics/credit_statistics/trade/trade.xls",
         "parser": "text",
         "series_code": "RU_TRADE_BALANCE",
         "start_date": "2015-01-01",
         "extra": {
-          "global_series_latest": true,
-          "preserve_vintage_at": true,
-          "page_url": "https://www.cbr.ru/statistics/macro_itm/external_sector/etg/"
+          "store_in_observations": true,
+          "latest_only": false,
+          "revision_check_observations": 0,
+          "page_url": "https://www.cbr.ru/statistics/macro_itm/external_sector/etg/",
+          "backfill_publication_months_after": 2,
+          "backfill_publication_day": 13,
+          "backfill_publication_time": "10:00",
+          "publication_timezone": "Europe/Moscow"
         }
       },
       "series": [
         {
           "series_code": "RU_TRADE_BALANCE",
-          "series_name": "Russia goods trade balance, million USD, balance of payments methodology"
+          "series_name": "Russia goods trade balance, million USD, balance of payments methodology",
+          "frequency": "monthly",
+          "group_code": "ru_macro",
+          "subgroup_code": "external_sector",
+          "description": "Goods exports FOB minus goods imports FOB from the official Bank of Russia trade workbook.",
+          "units": "million USD"
         }
       ],
       "metadata": {
-        "note": "Live updater for RU_TRADE_BALANCE. Each run reads the official Bank of Russia trade.xls workbook, compares against the latest stored RU_TRADE_BALANCE observation globally, and inserts only newly published months. Value is goods exports FOB minus goods imports FOB, million USD. publication_at and vintage_at are set to the Bank of Russia workbook update date."
+        "note": "Single live/backfill source for RU_TRADE_BALANCE. Each run reads the official Bank of Russia trade.xls workbook from https://www.cbr.ru/statistics/macro_itm/external_sector/etg/ and writes directly to observations. Value is goods exports FOB minus goods imports FOB, million USD, balance of payments methodology. For backfill, published_at is the typical publication timing: the 13th day of the second month after the reference month at 10:00 Europe/Moscow. In live mode, published_at is the actual ingestion timestamp."
       }
-    },
-    {
-      "_comment": "Nowcast group: Russia fiscal flows and tax calendar"
     },
     {
       "source_code": "MINFIN_RU_FISCAL_OILGAS",
@@ -1426,28 +1658,49 @@
       "source_type": "web",
       "adapter_name": "minfin_oilgas",
       "enabled": true,
-      "schedule_cron": "0 9 * * 1-5",
+      "schedule_cron": "*/15 * * * *",
       "scrape": {
         "url": "https://minfin.gov.ru/ru/document?id_4=122094-svedeniya_o_formirovanii_i_ispolzovanii_dopolnitelnykh_neftegazovykh_dokhodov_federalnogo_byudzheta_v_2018-2025_godakh",
         "parser": "text",
         "start_date": "2017-02-01",
         "extra": {
           "historical_csv_path": "storage/exports/russia_fiscal_oilgas_monthly_from_2017_02.csv",
-          "preserve_vintage_at": true
+          "store_in_observations": true,
+          "latest_only": false,
+          "revision_check_observations": 0
         }
       },
       "series": [
         {
           "series_code": "RU_FISCAL_OILGAS_REVENUE",
-          "series_name": "Russia federal budget oil and gas revenues, billion RUB"
+          "series_name": "Russia federal budget oil and gas revenues, billion RUB",
+          "frequency": "monthly",
+          "group_code": "ru_fiscal",
+          "subgroup_code": "oilgas_revenue",
+          "description": "Federal oil and gas budget revenues, linking oil prices, the budget, and FX operations.",
+          "units": "billion RUB"
         },
         {
           "series_code": "RU_FISCAL_FX_OPERATION_AMOUNT",
-          "series_name": "Russia Minfin FX and gold purchase/sale operation amount, billion RUB"
+          "series_name": "Russia Minfin FX and gold purchase/sale operation amount, billion RUB",
+          "frequency": "monthly",
+          "group_code": "ru_fiscal",
+          "subgroup_code": "fx_operations",
+          "description": "Finance Ministry and Bank of Russia FX and gold operations, a direct FX demand and supply factor.",
+          "units": "billion RUB"
+        },
+        {
+          "series_code": "RU_FISCAL_ADDITIONAL_OILGAS_REVENUE",
+          "series_name": "Russia additional oil and gas revenues, billion RUB",
+          "frequency": "monthly",
+          "group_code": "ru_fiscal",
+          "subgroup_code": "oilgas_revenue",
+          "description": "Additional oil and gas budget revenues from the Minfin oil/gas revenue table.",
+          "units": "billion RUB"
         }
       ],
       "metadata": {
-        "note": "Bootstrap + live updater for Minfin oil/gas fiscal data. Each run first reads historical monthly observations from storage/exports/russia_fiscal_oilgas_monthly_from_2017_02.csv, then reads the official Minfin document table, skips annual-total columns, and appends live monthly observations that are missing from the historical CSV. Historical rows use publication_at from the CSV; live rows use the Minfin document update date as publication_at and vintage_at."
+        "note": "Bootstrap + 15-minute live updater for Minfin oil/gas fiscal data. Each run first reads historical monthly observations from storage/exports/russia_fiscal_oilgas_monthly_from_2017_02.csv, then reads the official Minfin document page table, skips annual-total columns, and writes directly to observations. CSV columns are mapped to RU_FISCAL_OILGAS_REVENUE, RU_FISCAL_FX_OPERATION_AMOUNT, and RU_FISCAL_ADDITIONAL_OILGAS_REVENUE. Historical rows use published_at from the CSV; live rows use the Minfin document update date, with publication date as fallback."
       }
     },
     {
@@ -1466,143 +1719,318 @@
       "series": [
         {
           "series_code": "RU_TAX_RU_BUSINESS_DAY",
-          "series_name": "Russia tax calendar is RU business day"
+          "series_name": "Russia tax calendar is RU business day",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "business_day",
+          "description": "Russian business day dummy, used for calendar alignment and lag construction.",
+          "frequency": "daily",
+          "units": "dummy"
         },
         {
           "series_code": "RU_TAX_ANY_DUE_DUMMY",
-          "series_name": "Russia tax calendar any tax due dummy"
+          "series_name": "Russia tax calendar any tax due dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "any_tax_due",
+          "description": "Dummy for any tax payment due on date t.",
+          "frequency": "daily",
+          "units": "dummy"
         },
         {
           "series_code": "RU_TAX_DUE_COUNT",
-          "series_name": "Russia tax calendar tax due count"
+          "series_name": "Russia tax calendar tax due count",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "tax_due_intensity",
+          "description": "Number of tax payments due on the date, measuring tax pressure intensity.",
+          "frequency": "daily",
+          "units": "count"
         },
         {
           "series_code": "RU_TAX_ANY_WINDOW_T_MINUS_3_TO_T",
-          "series_name": "Russia tax calendar any tax due window t-3 to t"
+          "series_name": "Russia tax calendar any tax due window t-3 to t",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "any_tax_window",
+          "description": "Window from t-3 to t before any tax payment.",
+          "frequency": "daily",
+          "units": "dummy"
         },
         {
           "series_code": "RU_TAX_WEEK_DUMMY",
-          "series_name": "Russia tax calendar tax week dummy"
+          "series_name": "Russia tax calendar tax week dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "tax_week",
+          "description": "Tax week dummy, a broad calendar factor for ruble demand.",
+          "frequency": "daily",
+          "units": "dummy"
         },
         {
           "series_code": "RU_TAX_ANY_T_MINUS_3",
-          "series_name": "Russia tax calendar any tax t-3 dummy"
+          "series_name": "Russia tax calendar any tax t-3 dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "any_tax_window",
+          "description": "Three business days before any tax payment.",
+          "frequency": "daily",
+          "units": "dummy"
         },
         {
           "series_code": "RU_TAX_ANY_T_MINUS_2",
-          "series_name": "Russia tax calendar any tax t-2 dummy"
+          "series_name": "Russia tax calendar any tax t-2 dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "any_tax_window",
+          "description": "Two business days before any tax payment.",
+          "frequency": "daily",
+          "units": "dummy"
         },
         {
           "series_code": "RU_TAX_ANY_T_MINUS_1",
-          "series_name": "Russia tax calendar any tax t-1 dummy"
+          "series_name": "Russia tax calendar any tax t-1 dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "any_tax_window",
+          "description": "One business day before any tax payment.",
+          "frequency": "daily",
+          "units": "dummy"
         },
         {
           "series_code": "RU_TAX_ANY_T0",
-          "series_name": "Russia tax calendar any tax t0 dummy"
+          "series_name": "Russia tax calendar any tax t0 dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "any_tax_window",
+          "description": "Any tax payment on date t.",
+          "frequency": "daily",
+          "units": "dummy"
         },
         {
           "series_code": "RU_TAX_VAT_DUE_DUMMY",
-          "series_name": "Russia tax calendar VAT due dummy"
+          "series_name": "Russia tax calendar VAT due dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "vat",
+          "description": "VAT payment due date dummy.",
+          "frequency": "daily",
+          "units": "dummy"
         },
         {
           "series_code": "RU_TAX_VAT_T_MINUS_3",
-          "series_name": "Russia tax calendar VAT t-3 dummy"
+          "series_name": "Russia tax calendar VAT t-3 dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "vat_window",
+          "description": "Three business days before VAT payment.",
+          "frequency": "daily",
+          "units": "dummy"
         },
         {
           "series_code": "RU_TAX_VAT_T_MINUS_2",
-          "series_name": "Russia tax calendar VAT t-2 dummy"
+          "series_name": "Russia tax calendar VAT t-2 dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "vat_window",
+          "description": "Two business days before VAT payment.",
+          "frequency": "daily",
+          "units": "dummy"
         },
         {
           "series_code": "RU_TAX_VAT_T_MINUS_1",
-          "series_name": "Russia tax calendar VAT t-1 dummy"
+          "series_name": "Russia tax calendar VAT t-1 dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "vat_window",
+          "description": "One business day before VAT payment.",
+          "frequency": "daily",
+          "units": "dummy"
         },
         {
           "series_code": "RU_TAX_VAT_T0",
-          "series_name": "Russia tax calendar VAT t0 dummy"
+          "series_name": "Russia tax calendar VAT t0 dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "vat_window",
+          "description": "VAT payment on date t.",
+          "frequency": "daily",
+          "units": "dummy"
         },
         {
           "series_code": "RU_TAX_VAT_WINDOW_T_MINUS_3_TO_T",
-          "series_name": "Russia tax calendar VAT window t-3 to t"
+          "series_name": "Russia tax calendar VAT window t-3 to t",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "vat_window",
+          "description": "Window from t-3 to t before VAT payment.",
+          "frequency": "daily",
+          "units": "dummy"
         },
         {
           "series_code": "RU_TAX_PROFIT_DUE_DUMMY",
-          "series_name": "Russia tax calendar profit tax due dummy"
+          "series_name": "Russia tax calendar profit tax due dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "profit_tax",
+          "description": "Profit tax payment due date dummy.",
+          "frequency": "daily",
+          "units": "dummy"
         },
         {
           "series_code": "RU_TAX_PROFIT_T_MINUS_3",
-          "series_name": "Russia tax calendar profit tax t-3 dummy"
+          "series_name": "Russia tax calendar profit tax t-3 dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "profit_tax_window",
+          "description": "Three business days before profit tax payment.",
+          "frequency": "daily",
+          "units": "dummy"
         },
         {
           "series_code": "RU_TAX_PROFIT_T_MINUS_2",
-          "series_name": "Russia tax calendar profit tax t-2 dummy"
+          "series_name": "Russia tax calendar profit tax t-2 dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "profit_tax_window",
+          "description": "Two business days before profit tax payment.",
+          "frequency": "daily",
+          "units": "dummy"
         },
         {
           "series_code": "RU_TAX_PROFIT_T_MINUS_1",
-          "series_name": "Russia tax calendar profit tax t-1 dummy"
+          "series_name": "Russia tax calendar profit tax t-1 dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "profit_tax_window",
+          "description": "One business day before profit tax payment.",
+          "frequency": "daily",
+          "units": "dummy"
         },
         {
           "series_code": "RU_TAX_PROFIT_T0",
-          "series_name": "Russia tax calendar profit tax t0 dummy"
+          "series_name": "Russia tax calendar profit tax t0 dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "profit_tax_window",
+          "description": "Profit tax payment on date t.",
+          "frequency": "daily",
+          "units": "dummy"
         },
         {
           "series_code": "RU_TAX_PROFIT_WINDOW_T_MINUS_3_TO_T",
-          "series_name": "Russia tax calendar profit tax window t-3 to t"
+          "series_name": "Russia tax calendar profit tax window t-3 to t",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "profit_tax_window",
+          "description": "Window from t-3 to t before profit tax payment.",
+          "frequency": "daily",
+          "units": "dummy"
         },
         {
           "series_code": "RU_TAX_NDPI_DUE_DUMMY",
-          "series_name": "Russia tax calendar NDPI due dummy"
+          "series_name": "Russia tax calendar NDPI due dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "ndpi",
+          "description": "Mineral extraction tax payment due date dummy.",
+          "frequency": "daily",
+          "units": "dummy"
         },
         {
           "series_code": "RU_TAX_NDPI_T_MINUS_3",
-          "series_name": "Russia tax calendar NDPI t-3 dummy"
+          "series_name": "Russia tax calendar NDPI t-3 dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "ndpi_window",
+          "description": "Three business days before mineral extraction tax payment.",
+          "frequency": "daily",
+          "units": "dummy"
         },
         {
           "series_code": "RU_TAX_NDPI_T_MINUS_2",
-          "series_name": "Russia tax calendar NDPI t-2 dummy"
+          "series_name": "Russia tax calendar NDPI t-2 dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "ndpi_window",
+          "description": "Two business days before mineral extraction tax payment.",
+          "frequency": "daily",
+          "units": "dummy"
         },
         {
           "series_code": "RU_TAX_NDPI_T_MINUS_1",
-          "series_name": "Russia tax calendar NDPI t-1 dummy"
+          "series_name": "Russia tax calendar NDPI t-1 dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "ndpi_window",
+          "description": "One business day before mineral extraction tax payment.",
+          "frequency": "daily",
+          "units": "dummy"
         },
         {
           "series_code": "RU_TAX_NDPI_T0",
-          "series_name": "Russia tax calendar NDPI t0 dummy"
+          "series_name": "Russia tax calendar NDPI t0 dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "ndpi_window",
+          "description": "Mineral extraction tax payment on date t.",
+          "frequency": "daily",
+          "units": "dummy"
         },
         {
           "series_code": "RU_TAX_NDPI_WINDOW_T_MINUS_3_TO_T",
-          "series_name": "Russia tax calendar NDPI window t-3 to t"
+          "series_name": "Russia tax calendar NDPI window t-3 to t",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "ndpi_window",
+          "description": "Window from t-3 to t before mineral extraction tax payment.",
+          "frequency": "daily",
+          "units": "dummy"
         },
         {
           "series_code": "RU_TAX_QTR_PAYMENT_DUE_DUMMY",
-          "series_name": "Russia tax calendar quarter tax payment due dummy"
+          "series_name": "Russia tax calendar quarter tax payment due dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "quarter_tax_payment",
+          "description": "Quarterly tax payment due date dummy.",
+          "frequency": "daily",
+          "units": "dummy"
         },
         {
           "series_code": "RU_TAX_QTR_PAYMENT_T_MINUS_3",
-          "series_name": "Russia tax calendar quarter tax payment t-3 dummy"
+          "series_name": "Russia tax calendar quarter tax payment t-3 dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "quarter_tax_payment_window",
+          "description": "Three business days before quarterly tax payment.",
+          "frequency": "daily",
+          "units": "dummy"
         },
         {
           "series_code": "RU_TAX_QTR_PAYMENT_T_MINUS_2",
-          "series_name": "Russia tax calendar quarter tax payment t-2 dummy"
+          "series_name": "Russia tax calendar quarter tax payment t-2 dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "quarter_tax_payment_window",
+          "description": "Two business days before quarterly tax payment.",
+          "frequency": "daily",
+          "units": "dummy"
         },
         {
           "series_code": "RU_TAX_QTR_PAYMENT_T_MINUS_1",
-          "series_name": "Russia tax calendar quarter tax payment t-1 dummy"
+          "series_name": "Russia tax calendar quarter tax payment t-1 dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "quarter_tax_payment_window",
+          "description": "One business day before quarterly tax payment.",
+          "frequency": "daily",
+          "units": "dummy"
         },
         {
           "series_code": "RU_TAX_QTR_PAYMENT_T0",
-          "series_name": "Russia tax calendar quarter tax payment t0 dummy"
+          "series_name": "Russia tax calendar quarter tax payment t0 dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "quarter_tax_payment_window",
+          "description": "Quarterly tax payment on date t.",
+          "frequency": "daily",
+          "units": "dummy"
         },
         {
           "series_code": "RU_TAX_QTR_PAYMENT_WINDOW_T_MINUS_3_TO_T",
-          "series_name": "Russia tax calendar quarter tax payment window t-3 to t"
+          "series_name": "Russia tax calendar quarter tax payment window t-3 to t",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "quarter_tax_payment_window",
+          "description": "Window from t-3 to t before quarterly tax payments.",
+          "frequency": "daily",
+          "units": "dummy"
         },
         {
           "series_code": "RU_TAX_QTR_END_LAST_BUSINESS_DAY",
-          "series_name": "Russia tax calendar quarter end last business day dummy"
+          "series_name": "Russia tax calendar quarter end last business day dummy",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "quarter_end",
+          "description": "Last business day of the quarter, capturing possible balancing or liquidity effects.",
+          "frequency": "daily",
+          "units": "dummy"
         },
         {
           "series_code": "RU_TAX_QTR_END_WINDOW_T_MINUS_3_TO_T",
-          "series_name": "Russia tax calendar quarter end window t-3 to t"
+          "series_name": "Russia tax calendar quarter end window t-3 to t",
+          "group_code": "ru_tax_calendar",
+          "subgroup_code": "quarter_end_window",
+          "description": "Window from t-3 to t before quarter end.",
+          "frequency": "daily",
+          "units": "dummy"
         }
       ],
       "metadata": {
@@ -1615,9 +2043,5 @@
         "note": "Loads daily RU tax dummy variables from storage/exports/ru_tax_dummy_calendar_2015_2026.csv. The scheduled run checks daily; only during the usual production-calendar release window (September +/- 15 days) it looks for the next year's RU production calendar and appends generated dummy rows when the calendar becomes available."
       }
     }
-  ],
-  "todos": [
-    "TODO to add weekly inflation data and upload it to csv",
-    "TODO to add life CPI weekly data"
   ]
 }

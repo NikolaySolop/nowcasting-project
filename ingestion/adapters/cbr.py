@@ -2,18 +2,19 @@ from __future__ import annotations
 
 import re
 import zipfile
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from email.utils import parsedate_to_datetime
 from io import BytesIO
 from typing import Any
 from xml.etree import ElementTree as ET
+from zoneinfo import ZoneInfo
 
 import httpx
 from bs4 import BeautifulSoup
 
 from ingestion.adapters.base import AdapterError, BaseAdapter, FetchContext, FetchResult
-from ingestion.schemas.observations import ObservationKind, RawObservationIn
+from ingestion.schemas.observations import ObservationIn, ObservationKind, RawObservationIn
 
 
 class CbrAdapter(BaseAdapter):
@@ -24,7 +25,6 @@ class CbrAdapter(BaseAdapter):
     key_rate_url = "https://www.cbr.ru/hd_base/KeyRate/"
     key_rate_calendar_url = "https://www.cbr.ru/dkp/cal_mp/"
     ruonia_dynamics_url = "https://www.cbr.ru/hd_base/ruonia/dynamics/"
-    inflation_url = "https://www.cbr.ru/statistics/ddkp/infl/"
     dkfs_url = "https://www.cbr.ru/statistics/macro_itm/dkfs/"
     credit_m2x_url = "https://www.cbr.ru/Content/Document/File/177307/credit_m2x.xlsx"
     xlsx_namespace = {"a": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
@@ -46,8 +46,6 @@ class CbrAdapter(BaseAdapter):
             "key_rate_meetings",
             "key_rate_meeting_dummy",
             "meetings_calendar",
-            "key_rate_decision_publications",
-            "key_rate_decision_publication_dummy",
         }:
             return await self._fetch_key_rate_meetings(context)
         if mode in {"key_rate", "key_rate_history", "history_key_rate"}:
@@ -56,8 +54,6 @@ class CbrAdapter(BaseAdapter):
             return await self._fetch_history_daily(context)
         if mode in {"latest", "latest_daily", "current", "daily"}:
             return await self._fetch_latest_daily(context)
-        if mode in {"inflation", "inflation_dynamics", "cpi_yoy", "cpi_yoy_dynamics"}:
-            return await self._fetch_inflation_dynamics(context)
         if mode in {"credit_m2x", "money_credit", "monetary_aggregates_credit"}:
             return await self._fetch_credit_m2x(context)
         raise AdapterError(f"unsupported CBR mode: {mode}")
@@ -71,9 +67,11 @@ class CbrAdapter(BaseAdapter):
         metrics = self._credit_m2x_metrics(context)
         date_from = self._multi_series_start_date(context, [metric["series_code"] for metric in metrics])
         date_to = self._end_date(extra)
+        loaded_at = datetime.now(timezone.utc)
         if date_from.date() > date_to.date():
             return FetchResult(
                 observations=[],
+                loaded_at=loaded_at,
                 raw_payload={
                     "mode": "credit_m2x",
                     "date_from": date_from.date().isoformat(),
@@ -112,15 +110,29 @@ class CbrAdapter(BaseAdapter):
         xlsx_last_modified = self._parse_http_datetime(xlsx_response.headers.get("last-modified"))
         rows = self._parse_credit_m2x_rows(xlsx_response.content, metrics)
         rows = [row for row in rows if date_from.date() <= row["date"].date() <= date_to.date()]
-        observations = self._credit_m2x_rows_to_observations(
+        store_in_observations = bool(extra.get("store_in_observations", False))
+        observations = [] if store_in_observations else self._credit_m2x_rows_to_observations(
             context,
             rows,
             publication_dates,
             page_last_update=page_last_update,
             xlsx_last_modified=xlsx_last_modified,
         )
+        table_observations = (
+            self._credit_m2x_rows_to_table_observations(
+                context,
+                rows,
+                publication_dates,
+                page_last_update=page_last_update,
+                loaded_at=loaded_at,
+            )
+            if store_in_observations
+            else []
+        )
         return FetchResult(
             observations=observations,
+            table_observations=table_observations,
+            loaded_at=loaded_at,
             raw_payload={
                 "mode": "credit_m2x",
                 "page_url": str(page_response.url),
@@ -128,7 +140,7 @@ class CbrAdapter(BaseAdapter):
                 "date_from": date_from.date().isoformat(),
                 "date_to": date_to.date().isoformat(),
                 "row_count": len(rows),
-                "observation_count": len(observations),
+                "observation_count": len(table_observations) if store_in_observations else len(observations),
                 "page_last_update": page_last_update.isoformat() if page_last_update else None,
                 "xlsx_last_modified": xlsx_last_modified.isoformat() if xlsx_last_modified else None,
             },
@@ -143,10 +155,14 @@ class CbrAdapter(BaseAdapter):
         mode = str(extra.get("mode") or "key_rate_meetings")
         series_code = self._series_code(context)
         date_from = self._start_date(context, series_code)
+        if bool(extra.get("refresh_all_observations", False)) and spec.start_date is not None:
+            date_from = self._ensure_utc(spec.start_date)
         date_to = self._end_date(extra)
+        loaded_at = datetime.now(timezone.utc)
         if date_from.date() > date_to.date():
             return FetchResult(
                 observations=[],
+                loaded_at=loaded_at,
                 raw_payload={
                     "mode": mode,
                     "date_from": date_from.date().isoformat(),
@@ -175,16 +191,36 @@ class CbrAdapter(BaseAdapter):
 
         rows = self._parse_key_rate_meeting_rows(response.text)
         rows = [row for row in rows if date_from.date() <= row["date"].date() <= date_to.date()]
-        observations = self._key_rate_meeting_rows_to_observations(context, rows, series_code)
+        page_last_update = self._parse_page_last_update(response.text)
+        store_in_observations = bool(extra.get("store_in_observations", False))
+        observations = (
+            []
+            if store_in_observations
+            else self._key_rate_meeting_rows_to_observations(context, rows, series_code)
+        )
+        table_observations = (
+            self._key_rate_meeting_rows_to_table_observations(
+                context,
+                rows,
+                series_code,
+                page_last_update=page_last_update,
+                loaded_at=loaded_at,
+            )
+            if store_in_observations
+            else []
+        )
         return FetchResult(
             observations=observations,
+            table_observations=table_observations,
+            loaded_at=loaded_at,
             raw_payload={
                 "mode": mode,
                 "url": str(response.url),
                 "date_from": date_from.date().isoformat(),
                 "date_to": date_to.date().isoformat(),
                 "row_count": len(rows),
-                "observation_count": len(observations),
+                "page_last_update": page_last_update.isoformat() if page_last_update else None,
+                "observation_count": len(table_observations) if store_in_observations else len(observations),
             },
         )
 
@@ -197,9 +233,11 @@ class CbrAdapter(BaseAdapter):
         metrics = self._ruonia_metrics(context)
         date_from = self._ruonia_start_date(context, [metric["series_code"] for metric in metrics])
         date_to = self._end_date(extra)
+        loaded_at = datetime.now(timezone.utc)
         if date_from.date() > date_to.date():
             return FetchResult(
                 observations=[],
+                loaded_at=loaded_at,
                 raw_payload={
                     "mode": "ruonia_dynamics",
                     "date_from": date_from.date().isoformat(),
@@ -234,16 +272,24 @@ class CbrAdapter(BaseAdapter):
                 ) from exc
 
         rows = self._parse_ruonia_rows(response.text)
-        observations = self._ruonia_rows_to_observations(context, rows, metrics)
+        store_in_observations = bool(extra.get("store_in_observations", False))
+        observations = [] if store_in_observations else self._ruonia_rows_to_observations(context, rows, metrics)
+        table_observations = (
+            self._ruonia_rows_to_table_observations(context, rows, metrics, loaded_at=loaded_at)
+            if store_in_observations
+            else []
+        )
         return FetchResult(
             observations=observations,
+            table_observations=table_observations,
+            loaded_at=loaded_at,
             raw_payload={
                 "mode": "ruonia_dynamics",
                 "url": str(response.url),
                 "date_from": date_from.date().isoformat(),
                 "date_to": date_to.date().isoformat(),
                 "row_count": len(rows),
-                "observation_count": len(observations),
+                "observation_count": len(table_observations) if store_in_observations else len(observations),
             },
         )
 
@@ -256,9 +302,11 @@ class CbrAdapter(BaseAdapter):
         series_code = self._series_code(context)
         date_from = self._start_date(context, series_code)
         date_to = self._end_date(extra)
+        loaded_at = datetime.now(timezone.utc)
         if date_from.date() > date_to.date():
             return FetchResult(
                 observations=[],
+                loaded_at=loaded_at,
                 raw_payload={
                     "mode": "key_rate_history",
                     "date_from": date_from.date().isoformat(),
@@ -275,6 +323,9 @@ class CbrAdapter(BaseAdapter):
             "UniDbQuery.To": self._format_cbr_query_date(date_to),
             "UniDbQuery.Posted": "True",
         }
+        store_in_observations = bool(extra.get("store_in_observations", False))
+        decision_rows: list[dict[str, Any]] = []
+        calendar_url: str | None = None
 
         async with httpx.AsyncClient(
             timeout=context.settings.request_timeout_seconds,
@@ -291,77 +342,43 @@ class CbrAdapter(BaseAdapter):
                 raise AdapterError(
                     f"CBR key rate HTTP {exc.response.status_code}: {exc.response.text[:300]}"
                 ) from exc
+            if store_in_observations:
+                calendar_url = str(extra.get("key_rate_calendar_url") or self.key_rate_calendar_url)
+                calendar_response = await client.get(calendar_url, headers=headers)
+                try:
+                    calendar_response.raise_for_status()
+                except httpx.HTTPStatusError as exc:
+                    raise AdapterError(
+                        f"CBR key rate calendar HTTP {exc.response.status_code}: {exc.response.text[:300]}"
+                    ) from exc
+                decision_rows = self._parse_key_rate_meeting_rows(calendar_response.text)
 
         rows = self._parse_key_rate_rows(response.text)
         observations = self._key_rate_rows_to_observations(context, rows, series_code)
+        table_observations = (
+            self._key_rate_rows_to_table_observations(
+                context,
+                rows,
+                series_code,
+                loaded_at=loaded_at,
+                decision_rows=decision_rows,
+            )
+            if store_in_observations
+            else []
+        )
         return FetchResult(
-            observations=observations,
+            observations=[] if store_in_observations else observations,
+            table_observations=table_observations,
+            loaded_at=loaded_at,
             raw_payload={
                 "mode": "key_rate_history",
                 "url": str(response.url),
                 "date_from": date_from.date().isoformat(),
                 "date_to": date_to.date().isoformat(),
                 "row_count": len(rows),
-                "observation_count": len(observations),
-            },
-        )
-
-    async def _fetch_inflation_dynamics(self, context: FetchContext) -> FetchResult:
-        spec = context.source.scrape
-        if spec is None:
-            raise AdapterError(f"source {context.source.source_code} has no CBR scrape spec")
-
-        extra = spec.extra or {}
-        series_code = self._series_code(context)
-        date_from = self._start_date(context, series_code)
-        date_to = self._end_date(extra)
-        if date_from.date() > date_to.date():
-            return FetchResult(
-                observations=[],
-                raw_payload={
-                    "mode": "inflation_dynamics",
-                    "date_from": date_from.date().isoformat(),
-                    "date_to": date_to.date().isoformat(),
-                    "row_count": 0,
-                    "observation_count": 0,
-                },
-            )
-
-        headers = {"User-Agent": context.settings.request_user_agent}
-        headers.update(spec.headers)
-        params = {
-            "UniDbQuery.From": self._format_cbr_query_date(date_from),
-            "UniDbQuery.To": self._format_cbr_query_date(date_to),
-            "UniDbQuery.Posted": "True",
-        }
-
-        async with httpx.AsyncClient(
-            timeout=context.settings.request_timeout_seconds,
-            follow_redirects=True,
-        ) as client:
-            response = await client.get(
-                str(spec.url or extra.get("inflation_url") or self.inflation_url),
-                headers=headers,
-                params=params,
-            )
-            try:
-                response.raise_for_status()
-            except httpx.HTTPStatusError as exc:
-                raise AdapterError(
-                    f"CBR inflation HTTP {exc.response.status_code}: {exc.response.text[:300]}"
-                ) from exc
-
-        rows = self._parse_inflation_rows(response.text)
-        observations = self._inflation_rows_to_observations(context, rows, series_code)
-        return FetchResult(
-            observations=observations,
-            raw_payload={
-                "mode": "inflation_dynamics",
-                "url": str(response.url),
-                "date_from": date_from.date().isoformat(),
-                "date_to": date_to.date().isoformat(),
-                "row_count": len(rows),
-                "observation_count": len(observations),
+                "decision_calendar_url": calendar_url,
+                "decision_count": len(decision_rows),
+                "observation_count": len(table_observations) if store_in_observations else len(observations),
             },
         )
 
@@ -375,9 +392,11 @@ class CbrAdapter(BaseAdapter):
         series_code = self._series_code(context)
         date_from = self._start_date(context, series_code)
         date_to = self._end_date(extra)
+        loaded_at = datetime.now(timezone.utc)
         if date_from.date() > date_to.date():
             return FetchResult(
                 observations=[],
+                loaded_at=loaded_at,
                 raw_payload={
                     "mode": "history_daily",
                     "currency_id": currency_id,
@@ -413,9 +432,17 @@ class CbrAdapter(BaseAdapter):
                 ) from exc
 
         rows = self._parse_dynamic_rows(response.content, currency_id)
+        store_in_observations = bool(extra.get("store_in_observations", False))
         observations = self._rows_to_observations(context, rows, series_code)
+        table_observations = (
+            self._rows_to_table_observations(context, rows, series_code, loaded_at=loaded_at)
+            if store_in_observations
+            else []
+        )
         return FetchResult(
-            observations=observations,
+            observations=[] if store_in_observations else observations,
+            table_observations=table_observations,
+            loaded_at=loaded_at,
             raw_payload={
                 "mode": "history_daily",
                 "url": str(response.url),
@@ -423,7 +450,7 @@ class CbrAdapter(BaseAdapter):
                 "date_from": date_from.date().isoformat(),
                 "date_to": date_to.date().isoformat(),
                 "row_count": len(rows),
-                "observation_count": len(observations),
+                "observation_count": len(table_observations) if store_in_observations else len(observations),
             },
         )
 
@@ -435,6 +462,7 @@ class CbrAdapter(BaseAdapter):
         extra = spec.extra or {}
         currency_id = self._currency_id(extra)
         series_code = self._series_code(context)
+        loaded_at = datetime.now(timezone.utc)
         headers = {"User-Agent": context.settings.request_user_agent}
         headers.update(spec.headers)
         params: dict[str, str] = {}
@@ -459,15 +487,23 @@ class CbrAdapter(BaseAdapter):
                 ) from exc
 
         row = self._parse_daily_row(response.content, currency_id, str(extra.get("char_code") or ""))
+        store_in_observations = bool(extra.get("store_in_observations", False))
         observations = self._rows_to_observations(context, [row], series_code)
+        table_observations = (
+            self._rows_to_table_observations(context, [row], series_code, loaded_at=loaded_at)
+            if store_in_observations
+            else []
+        )
         return FetchResult(
-            observations=observations,
+            observations=[] if store_in_observations else observations,
+            table_observations=table_observations,
+            loaded_at=loaded_at,
             raw_payload={
                 "mode": "latest_daily",
                 "url": str(response.url),
                 "currency_id": currency_id,
                 "published_date": row["date"].date().isoformat(),
-                "observation_count": len(observations),
+                "observation_count": len(table_observations) if store_in_observations else len(observations),
             },
         )
 
@@ -514,6 +550,89 @@ class CbrAdapter(BaseAdapter):
             )
         return observations
 
+    def _rows_to_table_observations(
+        self,
+        context: FetchContext,
+        rows: list[dict[str, Any]],
+        series_code: str,
+        *,
+        loaded_at: datetime,
+    ) -> list[ObservationIn]:
+        spec = context.source.scrape
+        if spec is None:
+            return []
+
+        latest = context.latest_observed_at_by_series.get(series_code)
+        observations: list[ObservationIn] = []
+        for row in sorted(rows, key=lambda item: item["date"]):
+            rate_date = row["date"]
+            reference_start = self._cbr_reference_start(rate_date, spec.extra or {})
+            reference_end = self._cbr_reference_end(rate_date, spec.extra or {})
+            if latest is not None and reference_start <= latest:
+                continue
+            rate = row["rate"]
+            if bool((spec.extra or {}).get("invert", False)):
+                if rate == 0:
+                    raise AdapterError("cannot invert zero CBR rate")
+                rate = Decimal("1") / rate
+            scheduled_published_at = self._backfill_published_at(reference_end, spec.extra or {})
+
+            observations.append(
+                ObservationIn(
+                    series_code=series_code,
+                    source_code=context.source.source_code,
+                    reference_date=rate_date.date(),
+                    reference_start=reference_start,
+                    reference_end=reference_end,
+                    value=rate,
+                    published_at=(
+                        scheduled_published_at
+                        if latest is None
+                        else self._cbr_published_at(scheduled_published_at, loaded_at, spec.extra or {})
+                    ),
+                )
+            )
+        return observations
+
+    def _cbr_published_at(
+        self,
+        scheduled_published_at: datetime,
+        loaded_at: datetime,
+        extra: dict[str, Any],
+    ) -> datetime:
+        publish_tz = ZoneInfo(str(extra.get("backfill_published_timezone") or "Europe/Moscow"))
+        loaded_local_date = loaded_at.astimezone(publish_tz).date()
+        scheduled_local_date = scheduled_published_at.astimezone(publish_tz).date()
+        if scheduled_local_date >= loaded_local_date:
+            return loaded_at
+        return scheduled_published_at
+
+    def _cbr_reference_start(self, rate_date: datetime, extra: dict[str, Any]) -> datetime:
+        publish_tz = ZoneInfo(str(extra.get("backfill_published_timezone") or "Europe/Moscow"))
+        reference_time = self._parse_time_config(str(extra.get("rate_reference_start_time") or "10:00"))
+        reference_date = rate_date.astimezone(publish_tz).date() - timedelta(days=1)
+        return datetime.combine(reference_date, reference_time, tzinfo=publish_tz)
+
+    def _cbr_reference_end(self, rate_date: datetime, extra: dict[str, Any]) -> datetime:
+        publish_tz = ZoneInfo(str(extra.get("backfill_published_timezone") or "Europe/Moscow"))
+        reference_time = self._parse_time_config(str(extra.get("rate_reference_end_time") or "15:30"))
+        reference_date = rate_date.astimezone(publish_tz).date() - timedelta(days=1)
+        return datetime.combine(reference_date, reference_time, tzinfo=publish_tz)
+
+    def _backfill_published_at(self, reference_end: datetime, extra: dict[str, Any]) -> datetime:
+        publish_tz = ZoneInfo(str(extra.get("backfill_published_timezone") or "Europe/Moscow"))
+        publish_time = self._parse_time_config(str(extra.get("backfill_published_time") or "17:00"))
+        publish_date = reference_end.astimezone(publish_tz).date()
+        return datetime.combine(publish_date, publish_time, tzinfo=publish_tz)
+
+    @staticmethod
+    def _parse_time_config(raw_value: str) -> time:
+        try:
+            hour, minute = raw_value.split(":", maxsplit=1)
+            return time(hour=int(hour), minute=int(minute))
+        except ValueError as exc:
+            raise AdapterError(f"invalid time value: {raw_value}") from exc
+
     def _key_rate_rows_to_observations(
         self,
         context: FetchContext,
@@ -543,6 +662,90 @@ class CbrAdapter(BaseAdapter):
                 )
             )
         return observations
+
+    def _key_rate_rows_to_table_observations(
+        self,
+        context: FetchContext,
+        rows: list[dict[str, Any]],
+        series_code: str,
+        *,
+        loaded_at: datetime,
+        decision_rows: list[dict[str, Any]],
+    ) -> list[ObservationIn]:
+        decisions = self._key_rate_decisions_by_meeting_date(decision_rows)
+        rate_rows = sorted(rows, key=lambda item: item["date"])
+        observations: list[ObservationIn] = []
+        for index, (meeting_date, published_at) in enumerate(decisions):
+            if published_at > loaded_at:
+                continue
+
+            next_meeting_date, next_published_at = self._next_key_rate_decision(index, decisions, loaded_at)
+            rate = self._key_rate_rate_for_decision(meeting_date, next_meeting_date, rate_rows)
+            if rate is None:
+                continue
+
+            reference_end = (
+                next_published_at - timedelta(milliseconds=1)
+                if next_published_at is not None
+                else loaded_at
+            )
+            if reference_end < published_at:
+                continue
+
+            observations.append(
+                ObservationIn(
+                    series_code=series_code,
+                    source_code=context.source.source_code,
+                    reference_date=published_at.date(),
+                    reference_start=published_at,
+                    reference_end=reference_end,
+                    value=rate,
+                    published_at=published_at,
+                )
+            )
+        return observations
+
+    @staticmethod
+    def _next_key_rate_decision(
+        index: int,
+        decisions: list[tuple[date, datetime]],
+        loaded_at: datetime,
+    ) -> tuple[date | None, datetime | None]:
+        for meeting_date, published_at in decisions[index + 1 :]:
+            if published_at <= loaded_at:
+                return meeting_date, published_at
+            return meeting_date, None
+        return None, None
+
+    @staticmethod
+    def _key_rate_rate_for_decision(
+        meeting_date: date,
+        next_meeting_date: date | None,
+        rate_rows: list[dict[str, Any]],
+    ) -> Decimal | None:
+        for row in rate_rows:
+            rate_date = row["date"].date()
+            if rate_date <= meeting_date:
+                continue
+            if next_meeting_date is not None and rate_date >= next_meeting_date:
+                return None
+            rate = row.get("rate")
+            return rate if isinstance(rate, Decimal) else None
+        return None
+
+    @staticmethod
+    def _key_rate_decisions_by_meeting_date(rows: list[dict[str, Any]]) -> list[tuple[date, datetime]]:
+        decisions: list[tuple[date, datetime]] = []
+        for row in rows:
+            published_at = row.get("date")
+            meeting_date = row.get("meeting_date")
+            if not isinstance(published_at, datetime) or not isinstance(meeting_date, str):
+                continue
+            try:
+                decisions.append((datetime.fromisoformat(meeting_date).date(), published_at))
+            except ValueError:
+                continue
+        return sorted(decisions, key=lambda item: item[0])
 
     def _key_rate_meeting_rows_to_observations(
         self,
@@ -580,6 +783,92 @@ class CbrAdapter(BaseAdapter):
                 )
             )
         return observations
+
+    def _key_rate_meeting_rows_to_table_observations(
+        self,
+        context: FetchContext,
+        rows: list[dict[str, Any]],
+        series_code: str,
+        *,
+        page_last_update: datetime | None,
+        loaded_at: datetime,
+    ) -> list[ObservationIn]:
+        spec = context.source.scrape
+        extra = spec.extra if spec is not None else {}
+        latest = context.latest_observed_at_by_series.get(series_code)
+        refresh_all = bool(extra.get("refresh_all_observations", False))
+        calendar_publication_dates = self._calendar_publication_dates(extra)
+        observations: list[ObservationIn] = []
+        for row in sorted(rows, key=lambda item: item["date"]):
+            reference_at = row["date"]
+            if not refresh_all and latest is not None and reference_at <= latest:
+                continue
+            published_at = self._key_rate_meeting_published_at(
+                row,
+                calendar_publication_dates,
+                page_last_update=page_last_update,
+                loaded_at=loaded_at,
+            )
+
+            observations.append(
+                ObservationIn(
+                    series_code=series_code,
+                    source_code=context.source.source_code,
+                    reference_date=reference_at.date(),
+                    reference_start=reference_at,
+                    reference_end=reference_at,
+                    value=Decimal("1"),
+                    published_at=published_at,
+                )
+            )
+        return observations
+
+    @classmethod
+    def _key_rate_meeting_published_at(
+        cls,
+        row: dict[str, Any],
+        calendar_publication_dates: dict[int, datetime],
+        *,
+        page_last_update: datetime | None,
+        loaded_at: datetime,
+    ) -> datetime:
+        reference_at = row["date"]
+        if cls._is_unscheduled_key_rate_meeting(row):
+            return reference_at
+        return calendar_publication_dates.get(reference_at.year) or page_last_update or loaded_at
+
+    @staticmethod
+    def _is_unscheduled_key_rate_meeting(row: dict[str, Any]) -> bool:
+        title = CbrAdapter._normalize_text(str(row.get("title") or "")).lower()
+        return "внеочеред" in title or "unscheduled" in title
+
+    @staticmethod
+    def _calendar_publication_dates(extra: dict[str, Any]) -> dict[int, datetime]:
+        raw_dates = extra.get("calendar_publication_dates")
+        if not isinstance(raw_dates, dict):
+            return {}
+        dates: dict[int, datetime] = {}
+        for raw_year, raw_value in raw_dates.items():
+            try:
+                year = int(raw_year)
+            except (TypeError, ValueError):
+                continue
+            parsed = CbrAdapter._parse_calendar_publication_date(raw_value)
+            if parsed is not None:
+                dates[year] = parsed
+        return dates
+
+    @staticmethod
+    def _parse_calendar_publication_date(value: Any) -> datetime | None:
+        if isinstance(value, datetime):
+            return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+        if not isinstance(value, str):
+            return None
+        try:
+            parsed = datetime.fromisoformat(value)
+        except ValueError:
+            return CbrAdapter._parse_cbr_date(value)
+        return parsed.astimezone(timezone.utc) if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)
 
     def _ruonia_rows_to_observations(
         self,
@@ -622,6 +911,66 @@ class CbrAdapter(BaseAdapter):
 
         observations.sort(key=lambda item: (item.observed_at, item.series_code))
         return observations
+
+    def _ruonia_rows_to_table_observations(
+        self,
+        context: FetchContext,
+        rows: list[dict[str, Any]],
+        metrics: list[dict[str, Any]],
+        *,
+        loaded_at: datetime,
+    ) -> list[ObservationIn]:
+        spec = context.source.scrape
+        extra = spec.extra if spec is not None else {}
+        observations: list[ObservationIn] = []
+        for row in sorted(rows, key=lambda item: item["date"]):
+            reference_at = row["date"]
+            publication_at = self._ruonia_published_at(row.get("publication_at"), reference_at, loaded_at, extra)
+            for metric in metrics:
+                series_code = str(metric["series_code"])
+                latest = context.latest_observed_at_by_series.get(series_code)
+                if latest is not None and reference_at <= latest:
+                    continue
+
+                raw_value = self._ruonia_row_value(row, metric["value_column"])
+                numeric_value = self._parse_decimal(raw_value)
+                if numeric_value is None:
+                    continue
+
+                observations.append(
+                    ObservationIn(
+                        series_code=series_code,
+                        source_code=context.source.source_code,
+                        reference_date=reference_at.date(),
+                        reference_start=reference_at,
+                        reference_end=reference_at,
+                        value=numeric_value,
+                        published_at=publication_at,
+                    )
+                )
+
+        observations.sort(key=lambda item: (item.reference_start, item.series_code))
+        return observations
+
+    def _ruonia_published_at(
+        self,
+        raw_publication_at: Any,
+        reference_at: datetime,
+        loaded_at: datetime,
+        extra: dict[str, Any],
+    ) -> datetime:
+        publication_at = raw_publication_at if isinstance(raw_publication_at, datetime) else reference_at
+        scheduled = self._ruonia_scheduled_published_at(publication_at, extra)
+        publish_tz = ZoneInfo(str(extra.get("backfill_published_timezone") or "Europe/Moscow"))
+        if scheduled.astimezone(publish_tz).date() >= loaded_at.astimezone(publish_tz).date():
+            return loaded_at
+        return scheduled
+
+    def _ruonia_scheduled_published_at(self, publication_at: datetime, extra: dict[str, Any]) -> datetime:
+        publish_tz = ZoneInfo(str(extra.get("backfill_published_timezone") or "Europe/Moscow"))
+        publish_time = self._parse_time_config(str(extra.get("backfill_published_time") or "15:00"))
+        publish_date = publication_at.astimezone(publish_tz).date()
+        return datetime.combine(publish_date, publish_time, tzinfo=publish_tz)
 
     def _credit_m2x_rows_to_observations(
         self,
@@ -669,6 +1018,49 @@ class CbrAdapter(BaseAdapter):
                         "page_last_update": page_last_update.isoformat() if page_last_update else None,
                         "xlsx_last_modified": xlsx_last_modified.isoformat() if xlsx_last_modified else None,
                     },
+                )
+            )
+
+        return observations
+
+    def _credit_m2x_rows_to_table_observations(
+        self,
+        context: FetchContext,
+        rows: list[dict[str, Any]],
+        publication_dates: dict[datetime, datetime],
+        *,
+        page_last_update: datetime | None,
+        loaded_at: datetime,
+    ) -> list[ObservationIn]:
+        spec = context.source.scrape
+        extra = spec.extra if spec is not None else {}
+        observations: list[ObservationIn] = []
+        for row in sorted(rows, key=lambda item: (item["date"], item["series_code"])):
+            series_code = str(row["series_code"])
+            reference_at = row["date"]
+            latest = context.latest_observed_at_by_series.get(series_code)
+            if latest is not None and reference_at <= latest:
+                continue
+
+            published_at, _publication_source = self._credit_m2x_publication_at(
+                reference_at,
+                publication_dates,
+                page_last_update=page_last_update,
+                fallback=str(extra.get("publication_at_fallback") or "estimated_same_month_day"),
+                fallback_day=int(extra.get("publication_at_fallback_day") or 22),
+            )
+            if published_at is None:
+                published_at = loaded_at
+
+            observations.append(
+                ObservationIn(
+                    series_code=series_code,
+                    source_code=context.source.source_code,
+                    reference_date=reference_at.date(),
+                    reference_start=reference_at,
+                    reference_end=self._month_end(reference_at),
+                    value=row["value"],
+                    published_at=published_at,
                 )
             )
 
@@ -760,7 +1152,7 @@ class CbrAdapter(BaseAdapter):
         rows: list[dict[str, Any]] = []
         seen_dates: set[datetime] = set()
 
-        def add_row(date_text: str, title: str, tab_id: str | None) -> None:
+        def add_row(date_text: str, title: str, tab_id: str | None, node: Any | None = None) -> None:
             date_text = self._normalize_text(date_text)
             fallback_year = tab_years.get(tab_id) if tab_id else None
             meeting_date = self._parse_cbr_calendar_date(date_text, fallback_year)
@@ -773,7 +1165,11 @@ class CbrAdapter(BaseAdapter):
             if meeting_date in seen_dates:
                 return
 
-            release_time = self._parse_cbr_release_time(title) or default_release_time
+            release_time = (
+                self._parse_cbr_release_time_from_links(node)
+                or self._parse_cbr_release_time(title)
+                or default_release_time
+            )
             observed_at = self._apply_moscow_time(meeting_date, release_time) if release_time else meeting_date
             seen_dates.add(meeting_date)
             rows.append(
@@ -794,6 +1190,7 @@ class CbrAdapter(BaseAdapter):
                 date_tag.get_text(" ", strip=True),
                 day.get_text(" ", strip=True),
                 self._calendar_tab_id(day),
+                day,
             )
 
         for tab in soup.select("[data-tabs-content]"):
@@ -804,7 +1201,7 @@ class CbrAdapter(BaseAdapter):
                     continue
                 if self._normalize_text(cells[0]).lower() == "дата":
                     continue
-                add_row(cells[0], cells[1], tab_id)
+                add_row(cells[0], cells[1], tab_id, table_row)
 
         if not rows:
             raise AdapterError("CBR key rate calendar has no parseable meeting rows")
@@ -844,66 +1241,6 @@ class CbrAdapter(BaseAdapter):
         if not rows:
             raise AdapterError("CBR RUONIA page has no parseable rows")
         return rows
-
-    def _parse_inflation_rows(self, html: str) -> list[dict[str, Any]]:
-        soup = BeautifulSoup(html, "html.parser")
-        table = soup.select_one("table.data") or soup.select_one("table")
-        if table is None:
-            raise AdapterError("CBR inflation page has no data table")
-
-        rows: list[dict[str, Any]] = []
-        for table_row in table.select("tr"):
-            cells = [cell.get_text(" ", strip=True) for cell in table_row.select("td,th")]
-            if len(cells) < 3 or table_row.select("th"):
-                continue
-            observed_at = self._parse_cbr_month_date(cells[0])
-            if observed_at is None:
-                continue
-            inflation = self._parse_decimal(cells[2])
-            if inflation is None:
-                continue
-            rows.append({"date": observed_at, "inflation_yoy": inflation, "cells": cells})
-
-        if not rows:
-            raise AdapterError("CBR inflation page has no parseable rows")
-        return rows
-
-    def _inflation_rows_to_observations(
-        self,
-        context: FetchContext,
-        rows: list[dict[str, Any]],
-        series_code: str,
-    ) -> list[RawObservationIn]:
-        spec = context.source.scrape
-        extra = spec.extra if spec is not None else {}
-        pub_nth_bday = extra.get("publication_at_nth_bday_next_month")
-        latest = context.latest_observed_at_by_series.get(series_code)
-        observations: list[RawObservationIn] = []
-        for row in sorted(rows, key=lambda r: r["date"]):
-            observed_at = row["date"]
-            if latest is not None and observed_at <= latest:
-                continue
-            publication_at = (
-                self._nth_business_day_of_next_month(observed_at, int(pub_nth_bday))
-                if pub_nth_bday is not None
-                else None
-            )
-            observations.append(
-                RawObservationIn(
-                    series_code=series_code,
-                    source_code=context.source.source_code,
-                    observed_at=observed_at,
-                    publication_at=publication_at,
-                    value_numeric=row["inflation_yoy"],
-                    kind=ObservationKind.MACRO,
-                    raw_payload={
-                        "source": "cbr_inflation_html",
-                        "value": str(row["inflation_yoy"]),
-                        "cells": row.get("cells"),
-                    },
-                )
-            )
-        return observations
 
     def _parse_credit_m2x_rows(self, content: bytes, metrics: list[dict[str, Any]]) -> list[dict[str, Any]]:
         rows = self._xlsx_sheet_rows(content, "млрд рублей")
@@ -1305,16 +1642,38 @@ class CbrAdapter(BaseAdapter):
             "октября": 10,
             "ноября": 11,
             "декабря": 12,
+            "january": 1,
+            "february": 2,
+            "march": 3,
+            "april": 4,
+            "may": 5,
+            "june": 6,
+            "july": 7,
+            "august": 8,
+            "september": 9,
+            "october": 10,
+            "november": 11,
+            "december": 12,
         }
         normalized = CbrAdapter._normalize_text(value).lower()
-        match = re.search(r"^(\d{1,2})\s+([а-яё]+)(?:\s+(\d{4}))?", normalized)
-        if match is None:
-            return None
+        day: int | None = None
+        month: int | None = None
+        year: int | None = None
 
-        day = int(match.group(1))
-        month = month_numbers.get(match.group(2))
-        year = int(match.group(3)) if match.group(3) else fallback_year
-        if month is None or year is None:
+        match = re.search(r"^(\d{1,2})\s+([a-zа-яё]+)(?:\s+(\d{4}))?", normalized)
+        if match is not None:
+            day = int(match.group(1))
+            month = month_numbers.get(match.group(2).strip("."))
+            year = int(match.group(3)) if match.group(3) else fallback_year
+        else:
+            match = re.search(r"^([a-zа-яё]+)\s+(\d{1,2})(?:,?\s+(\d{4}))?", normalized)
+            if match is None:
+                return None
+            month = month_numbers.get(match.group(1).strip("."))
+            day = int(match.group(2))
+            year = int(match.group(3)) if match.group(3) else fallback_year
+
+        if day is None or month is None or year is None:
             return None
 
         try:
@@ -1325,7 +1684,15 @@ class CbrAdapter(BaseAdapter):
     @staticmethod
     def _parse_cbr_release_time(value: str) -> tuple[int, int] | None:
         normalized = CbrAdapter._normalize_text(value).lower()
-        match = re.search(r"публикаци[ия][^0-9]{0,120}(\d{1,2})[:.](\d{2})", normalized)
+        patterns = (
+            r"публикаци[ия][^0-9]{0,120}(\d{1,2})[:.](\d{2})",
+            r"press release[^0-9]{0,160}(\d{1,2})[:.](\d{2})",
+        )
+        match = None
+        for pattern in patterns:
+            match = re.search(pattern, normalized)
+            if match is not None:
+                break
         if match is None:
             return None
 
@@ -1334,6 +1701,28 @@ class CbrAdapter(BaseAdapter):
         if not (0 <= hour <= 23 and 0 <= minute <= 59):
             return None
         return hour, minute
+
+    @staticmethod
+    def _parse_cbr_release_time_from_links(node: Any | None) -> tuple[int, int] | None:
+        if node is None or not hasattr(node, "select"):
+            return None
+        for link in node.select("a[href]"):
+            link_text = CbrAdapter._normalize_text(link.get_text(" ", strip=True)).lower()
+            href = str(link.get("href") or "")
+            if "press release" not in link_text and "пресс-релиз" not in link_text:
+                continue
+            if "key" not in (link_text + " " + href).lower() and "ставк" not in link_text:
+                continue
+            match = re.search(r"_(\d{2})(\d{2})(\d{2})(?:key|ключ)", href, flags=re.IGNORECASE)
+            if match is None:
+                match = re.search(r"_(\d{2})(\d{2})(\d{2})", href)
+            if match is None:
+                continue
+            hour = int(match.group(1))
+            minute = int(match.group(2))
+            if 0 <= hour <= 23 and 0 <= minute <= 59:
+                return hour, minute
+        return None
 
     @staticmethod
     def _apply_moscow_time(value: datetime, release_time: tuple[int, int]) -> datetime:
@@ -1358,45 +1747,25 @@ class CbrAdapter(BaseAdapter):
             return None
 
     @staticmethod
-    def _parse_cbr_month_date(value: str | None) -> datetime | None:
-        """Parse CBR month date in MM.YYYY format to the first of that month (UTC)."""
-        if not value:
-            return None
-        try:
-            return datetime.strptime(value.strip(), "%m.%Y").replace(tzinfo=timezone.utc)
-        except ValueError:
-            return None
-
-    @staticmethod
-    def _nth_business_day_of_next_month(observed_at: datetime, n: int) -> datetime:
-        """Return the nth Mon–Fri of the month following observed_at (UTC midnight)."""
-        if observed_at.month == 12:
-            year, month = observed_at.year + 1, 1
+    def _month_end(value: datetime) -> datetime:
+        if value.month == 12:
+            next_month = value.replace(year=value.year + 1, month=1, day=1)
         else:
-            year, month = observed_at.year, observed_at.month + 1
-        d = observed_at.replace(
-            year=year, month=month, day=1,
-            hour=0, minute=0, second=0, microsecond=0,
-            tzinfo=timezone.utc,
-        )
-        count = 0
-        while True:
-            if d.weekday() < 5:
-                count += 1
-                if count == n:
-                    return d
-            d += timedelta(days=1)
+            next_month = value.replace(month=value.month + 1, day=1)
+        return next_month - timedelta(microseconds=1)
 
     @staticmethod
     def _is_key_rate_meeting_title(value: str) -> bool:
         normalized = CbrAdapter._normalize_text(value).lower()
-        if "заседание совета директоров" not in normalized:
+        if "заседание совета директоров" in normalized:
+            return (
+                "ключевой ставке" in normalized
+                or "денежно-кредитной политике" in normalized
+                or "денежно-кредитной политики" in normalized
+            )
+        if "board of" not in normalized or "meeting" not in normalized:
             return False
-        return (
-            "ключевой ставке" in normalized
-            or "денежно-кредитной политике" in normalized
-            or "денежно-кредитной политики" in normalized
-        )
+        return "key rate" in normalized or "monetary policy" in normalized
 
     @staticmethod
     def _normalize_text(value: str) -> str:

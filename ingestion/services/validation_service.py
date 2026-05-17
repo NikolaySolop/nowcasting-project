@@ -1,10 +1,15 @@
-from ingestion.schemas.observations import RawObservationIn
+from typing import TypeVar
+
+from ingestion.schemas.observations import ObservationIn, RawObservationIn
+
+
+ObservationT = TypeVar("ObservationT", RawObservationIn, ObservationIn)
 
 
 class ValidationService:
-    def deduplicate_batch(self, observations: list[RawObservationIn]) -> tuple[list[RawObservationIn], int]:
+    def deduplicate_batch(self, observations: list[ObservationT]) -> tuple[list[ObservationT], int]:
         seen: set[tuple[object, ...]] = set()
-        unique: list[RawObservationIn] = []
+        unique: list[ObservationT] = []
         duplicate_count = 0
 
         for observation in observations:

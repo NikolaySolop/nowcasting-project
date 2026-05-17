@@ -17,7 +17,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Check Minfin oil/gas revenue and FX operation data and insert "
-            "new monthly observations into storage."
+            "new monthly observations into observations."
         )
     )
     parser.add_argument(

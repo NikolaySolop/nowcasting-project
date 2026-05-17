@@ -1,5 +1,6 @@
 import csv
 import re
+from calendar import monthrange
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -10,7 +11,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from ingestion.adapters.base import AdapterError, BaseAdapter, FetchContext, FetchResult
-from ingestion.schemas.observations import RawObservationIn
+from ingestion.schemas.observations import ObservationIn
 
 
 class MinfinOilGasAdapter(BaseAdapter):
@@ -24,6 +25,7 @@ class MinfinOilGasAdapter(BaseAdapter):
     default_historical_csv_path = Path("storage/exports/russia_fiscal_oilgas_monthly_from_2017_02.csv")
     oilgas_series_code = "RU_FISCAL_OILGAS_REVENUE"
     fx_series_code = "RU_FISCAL_FX_OPERATION_AMOUNT"
+    additional_oilgas_series_code = "RU_FISCAL_ADDITIONAL_OILGAS_REVENUE"
 
     months = {
         "янв": 1,
@@ -84,7 +86,7 @@ class MinfinOilGasAdapter(BaseAdapter):
         combined_rows = self._combine_rows(historical_rows, live["rows"])
         observations = self._to_observations(context, combined_rows, live["metadata"])
         return FetchResult(
-            observations=observations,
+            table_observations=observations,
             raw_payload={
                 **live["metadata"],
                 "historical_csv_path": str(historical_csv_path),
@@ -100,6 +102,7 @@ class MinfinOilGasAdapter(BaseAdapter):
         output = {
             self.oilgas_series_code: [],
             self.fx_series_code: [],
+            self.additional_oilgas_series_code: [],
         }
         with path.open(encoding="utf-8-sig", newline="") as handle:
             reader = csv.DictReader(handle)
@@ -126,6 +129,17 @@ class MinfinOilGasAdapter(BaseAdapter):
                             "period": period,
                             "value": fx_value,
                             "label": "historical_csv:fx_operation_amount_bln_rub",
+                            "origin": "historical_csv",
+                            "publication_at": publication_at,
+                        }
+                    )
+                additional_oilgas_value = self._parse_decimal(row.get("additional_oilgas_revenue_bln_rub"))
+                if additional_oilgas_value is not None:
+                    output[self.additional_oilgas_series_code].append(
+                        {
+                            "period": period,
+                            "value": additional_oilgas_value,
+                            "label": "historical_csv:additional_oilgas_revenue_bln_rub",
                             "origin": "historical_csv",
                             "publication_at": publication_at,
                         }
@@ -166,6 +180,7 @@ class MinfinOilGasAdapter(BaseAdapter):
         output = {
             self.oilgas_series_code: [],
             self.fx_series_code: [],
+            self.additional_oilgas_series_code: [],
         }
 
         tbody = table.find("tbody") or table
@@ -217,42 +232,35 @@ class MinfinOilGasAdapter(BaseAdapter):
         context: FetchContext,
         rows_by_series: dict[str, list[dict[str, Any]]],
         metadata: dict[str, Any],
-    ) -> list[RawObservationIn]:
+    ) -> list[ObservationIn]:
         publication_at = self._parse_iso_date(metadata.get("updated_at") or metadata.get("published_at"))
 
-        observations: list[RawObservationIn] = []
+        observations: list[ObservationIn] = []
         for series_code, rows in rows_by_series.items():
             latest = context.latest_observed_at_by_series.get(series_code)
             for row in rows:
                 period = row["period"]
-                observed_at = datetime(period.year, period.month, 1, tzinfo=timezone.utc)
-                if row["origin"] == "live_minfin" and latest is not None and observed_at <= latest:
+                reference_start = datetime(period.year, period.month, 1, tzinfo=timezone.utc)
+                if latest is not None and reference_start <= latest:
                     continue
                 row_publication_at = publication_at if row["origin"] == "live_minfin" else row.get("publication_at")
-                vintage_at = row_publication_at or observed_at
+                published_at = row_publication_at or reference_start
                 observations.append(
-                    RawObservationIn(
+                    ObservationIn(
                         series_code=series_code,
                         source_code=context.source.source_code,
-                        observed_at=observed_at,
-                        publication_at=row_publication_at,
-                        vintage_at=vintage_at,
-                        value_numeric=row["value"],
-                        raw_payload={
-                            "source_url": metadata["page_url"],
-                            "download_url": metadata["download_url"],
-                            "document_title": metadata["document_title"],
-                            "published_at": metadata["published_at"],
-                            "updated_at": metadata["updated_at"],
-                            "unit": metadata["unit"],
-                            "source_label": row["label"],
-                            "origin": row["origin"],
-                        },
+                        reference_date=period,
+                        reference_start=reference_start,
+                        reference_end=self._month_end(period),
+                        value=row["value"],
+                        published_at=published_at,
                     )
                 )
         return observations
 
     def _series_code_for_label(self, label: str) -> str | None:
+        if "дополнитель" in label and "нефтегазов" in label:
+            return self.additional_oilgas_series_code
         if "нефтегазовые доходы" in label and "всего" in label:
             return self.oilgas_series_code
         if "объем покупки" in label and "иностранной валюты" in label:
@@ -315,6 +323,11 @@ class MinfinOilGasAdapter(BaseAdapter):
         year = value.year + (1 if value.month == 12 else 0)
         month = 1 if value.month == 12 else value.month + 1
         return datetime(year, month, 1, tzinfo=timezone.utc)
+
+    @staticmethod
+    def _month_end(value: date) -> datetime:
+        last_day = monthrange(value.year, value.month)[1]
+        return datetime(value.year, value.month, last_day, 23, 59, 59, 999999, tzinfo=timezone.utc)
 
     @staticmethod
     def _find_labeled_date(soup: BeautifulSoup, label: str) -> str | None:

@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 import html
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
 from xml.etree import ElementTree as ET
+from zoneinfo import ZoneInfo
 
 import httpx
 
 from ingestion.adapters.base import AdapterError, BaseAdapter, FetchContext, FetchResult
-from ingestion.schemas.observations import ObservationKind, RawObservationIn
+from ingestion.schemas.observations import ObservationIn, ObservationKind, RawObservationIn
 
 
 class CbrSecInfoAdapter(BaseAdapter):
@@ -52,7 +53,10 @@ class CbrSecInfoAdapter(BaseAdapter):
                 },
             )
 
+        store_in_observations = bool(extra.get("store_in_observations", False))
         observations: list[RawObservationIn] = []
+        table_observations: list[ObservationIn] = []
+        loaded_at = datetime.now(timezone.utc)
         request_summaries: list[dict[str, Any]] = []
         row_count = 0
         async with httpx.AsyncClient(
@@ -70,28 +74,34 @@ class CbrSecInfoAdapter(BaseAdapter):
                     start_datetime=window_start,
                     end_datetime=window_end,
                 )
-                window_observations, summary = await self._fetch_window(
+                window_observations, window_table_observations, summary = await self._fetch_window(
                     client=client,
                     context=context,
                     endpoint=endpoint,
                     operation=operation,
                     headers=headers,
                     params=params,
+                    loaded_at=loaded_at,
+                    store_in_observations=store_in_observations,
                 )
                 observations.extend(window_observations)
+                table_observations.extend(window_table_observations)
                 row_count += int(summary["row_count"])
                 request_summaries.append(summary)
 
-        if not observations and bool(extra.get("raise_on_empty", False)):
+        total_observation_count = len(table_observations) if store_in_observations else len(observations)
+        if total_observation_count == 0 and bool(extra.get("raise_on_empty", False)):
             raise AdapterError(f"CBR SecInfo {operation} returned no observations")
 
         return FetchResult(
-            observations=observations,
+            observations=[] if store_in_observations else observations,
+            table_observations=table_observations,
+            loaded_at=loaded_at,
             raw_payload={
                 "url": endpoint,
                 "operation": operation,
                 "row_count": row_count,
-                "observation_count": len(observations),
+                "observation_count": total_observation_count,
                 "requests": request_summaries,
             },
         )
@@ -105,10 +115,12 @@ class CbrSecInfoAdapter(BaseAdapter):
         operation: str,
         headers: dict[str, str],
         params: dict[str, str],
-    ) -> tuple[list[RawObservationIn], dict[str, Any]]:
+        loaded_at: datetime,
+        store_in_observations: bool,
+    ) -> tuple[list[RawObservationIn], list[ObservationIn], dict[str, Any]]:
         spec = context.source.scrape
         if spec is None:
-            return [], {}
+            return [], [], {}
 
         envelope = self._soap_envelope(operation, params)
         try:
@@ -123,13 +135,18 @@ class CbrSecInfoAdapter(BaseAdapter):
 
         result = self._extract_result(response.text, operation, str((spec.extra or {}).get("result_tag") or ""))
         rows = self._extract_rows(result, str((spec.extra or {}).get("row_tag") or ""))
-        observations = self._rows_to_observations(context, rows)
-        return observations, {
+        observations = [] if store_in_observations else self._rows_to_observations(context, rows)
+        table_observations = (
+            self._rows_to_table_observations(context, rows, loaded_at=loaded_at)
+            if store_in_observations
+            else []
+        )
+        return observations, table_observations, {
             "params": params,
             "status_code": response.status_code,
             "content_type": response.headers.get("content-type"),
             "row_count": len(rows),
-            "observation_count": len(observations),
+            "observation_count": len(table_observations) if store_in_observations else len(observations),
         }
 
     def _request_params(
@@ -342,6 +359,96 @@ class CbrSecInfoAdapter(BaseAdapter):
         observations.sort(key=lambda item: (item.observed_at, item.series_code))
         return observations
 
+    def _rows_to_table_observations(
+        self,
+        context: FetchContext,
+        rows: list[dict[str, Any]],
+        *,
+        loaded_at: datetime,
+    ) -> list[ObservationIn]:
+        spec = context.source.scrape
+        if spec is None:
+            return []
+
+        metrics = self._metrics(context)
+        observations: list[ObservationIn] = []
+        date_mode = str((spec.extra or {}).get("date_mode") or "calendar").lower()
+        for row in rows:
+            for metric in metrics:
+                reference_at = self._parse_observed_at(
+                    self._row_value(row, metric.get("date_column") or spec.date_column),
+                    date_mode,
+                )
+                if reference_at is None:
+                    continue
+
+                series_code = str(metric["series_code"])
+                latest = context.latest_observed_at_by_series.get(series_code)
+                if latest is not None and reference_at <= latest:
+                    continue
+
+                raw_value = self._row_value(row, metric.get("value_column") or spec.value_column)
+                numeric_value = self._parse_decimal(raw_value)
+                scale = self._parse_decimal(metric.get("scale"))
+                if numeric_value is not None and scale is not None:
+                    numeric_value *= scale
+                if numeric_value is None:
+                    continue
+
+                reference_start = self._parse_datetime(self._row_value(row, metric.get("period_start_column")))
+                reference_end = self._parse_datetime(self._row_value(row, metric.get("period_end_column")))
+                published_at = self._table_published_at(
+                    metric,
+                    row,
+                    reference_at,
+                    loaded_at,
+                    spec.extra or {},
+                    latest is not None,
+                )
+
+                observations.append(
+                    ObservationIn(
+                        series_code=series_code,
+                        source_code=context.source.source_code,
+                        reference_date=reference_at.date(),
+                        reference_start=reference_start or reference_at,
+                        reference_end=reference_end or reference_at,
+                        value=numeric_value,
+                        published_at=published_at,
+                        skip_equal_to_previous=bool(metric.get("skip_equal_to_previous", False)),
+                    )
+                )
+
+        observations.sort(key=lambda item: (item.reference_start, item.series_code))
+        return observations
+
+    def _table_published_at(
+        self,
+        metric: dict[str, Any],
+        row: dict[str, Any],
+        reference_at: datetime,
+        loaded_at: datetime,
+        extra: dict[str, Any],
+        has_existing_data: bool,
+    ) -> datetime:
+        explicit = self._parse_datetime(self._row_value(row, metric.get("publication_column")))
+        if explicit is not None:
+            return explicit
+        publish_tz_name = str(extra.get("backfill_published_timezone") or "UTC")
+        publish_time = self._parse_time_config(str(extra.get("backfill_published_time") or "00:00"))
+        try:
+            publish_tz = timezone.utc if publish_tz_name.upper() == "UTC" else ZoneInfo(publish_tz_name)
+        except Exception as exc:
+            raise AdapterError(f"invalid SecInfo published timezone: {publish_tz_name}") from exc
+        scheduled = datetime.combine(reference_at.astimezone(publish_tz).date(), publish_time, tzinfo=publish_tz)
+        if (
+            bool(extra.get("live_published_at_loaded_at", False))
+            and has_existing_data
+            and scheduled.astimezone(publish_tz).date() >= loaded_at.astimezone(publish_tz).date()
+        ):
+            return loaded_at
+        return scheduled
+
     def _metrics(self, context: FetchContext) -> list[dict[str, Any]]:
         spec = context.source.scrape
         if spec is None:
@@ -428,6 +535,14 @@ class CbrSecInfoAdapter(BaseAdapter):
             return CbrSecInfoAdapter._ensure_utc(datetime.fromisoformat(raw))
         except ValueError:
             return None
+
+    @staticmethod
+    def _parse_time_config(raw_value: str) -> time:
+        try:
+            hour, minute = raw_value.split(":", maxsplit=1)
+            return time(hour=int(hour), minute=int(minute))
+        except ValueError as exc:
+            raise AdapterError(f"invalid SecInfo time value: {raw_value}") from exc
 
     @staticmethod
     def _ensure_utc(value: datetime) -> datetime:

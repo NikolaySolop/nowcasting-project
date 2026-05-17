@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import httpx
 
 from ingestion.adapters.base import AdapterError, BaseAdapter, FetchContext, FetchResult
-from ingestion.schemas.observations import ObservationKind, RawObservationIn
+from ingestion.schemas.observations import ObservationIn, ObservationKind, RawObservationIn
 
 
 class MoexAdapter(BaseAdapter):
@@ -66,7 +66,10 @@ class MoexAdapter(BaseAdapter):
         }
         headers.update(spec.headers)
 
+        store_in_observations = bool(extra.get("store_in_observations", False))
         observations: list[RawObservationIn] = []
+        table_observations: list[ObservationIn] = []
+        loaded_at = datetime.now(timezone.utc)
         raw_payload: dict[str, Any] = {"mode": mode, "instruments": []}
         async with httpx.AsyncClient(
             timeout=context.settings.request_timeout_seconds,
@@ -90,10 +93,24 @@ class MoexAdapter(BaseAdapter):
                 else:
                     raise AdapterError(f"unsupported MOEX mode: {mode}")
 
-                observations.extend(instrument_observations)
+                if store_in_observations:
+                    table_observations.extend(
+                        self._raw_observations_to_table(
+                            instrument_observations,
+                            instrument=instrument,
+                            loaded_at=loaded_at,
+                        )
+                    )
+                else:
+                    observations.extend(instrument_observations)
                 raw_payload["instruments"].append(metadata)
 
-        return FetchResult(observations=observations, raw_payload=raw_payload)
+        return FetchResult(
+            observations=[] if store_in_observations else observations,
+            table_observations=table_observations,
+            loaded_at=loaded_at,
+            raw_payload=raw_payload,
+        )
 
     async def _fetch_daily_history(
         self,
@@ -152,6 +169,23 @@ class MoexAdapter(BaseAdapter):
         if interval_minutes != 15:
             raise AdapterError("MOEX online mode currently supports only 15-minute aggregation")
 
+        market_status = await self._fetch_trading_status_if_required(
+            client=client,
+            instrument=instrument,
+            headers=headers,
+        )
+        if market_status is not None and not market_status["is_open"]:
+            return [], {
+                "series_code": instrument["series_code"],
+                "secid": instrument["secid"],
+                "interval": "1m_aggregated_to_15m",
+                "trading_status": market_status["status"],
+                "trading_status_time": market_status.get("time"),
+                "trading_status_systime": market_status.get("systime"),
+                "skipped": True,
+                "skip_reason": "trading_session_not_open",
+            }
+
         start_from = self._intraday_start(context, instrument, interval_minutes)
         now_utc = datetime.now(timezone.utc)
         safety_delay = timedelta(seconds=float(instrument.get("aggregation_delay_seconds", 90)))
@@ -188,6 +222,56 @@ class MoexAdapter(BaseAdapter):
             "till": till.isoformat(),
             "minute_rows": len(rows),
             "observations": len(observations),
+            "trading_status": market_status["status"] if market_status else None,
+            "trading_status_time": market_status.get("time") if market_status else None,
+            "trading_status_systime": market_status.get("systime") if market_status else None,
+        }
+
+    async def _fetch_trading_status_if_required(
+        self,
+        *,
+        client: httpx.AsyncClient,
+        instrument: dict[str, Any],
+        headers: dict[str, str],
+    ) -> dict[str, Any] | None:
+        if not bool(instrument.get("require_trading_status_open", False)):
+            return None
+
+        status = await self._fetch_trading_status(client=client, instrument=instrument, headers=headers)
+        open_statuses = self._trading_status_open_values(instrument)
+        status["is_open"] = status["status"] in open_statuses
+        return status
+
+    async def _fetch_trading_status(
+        self,
+        *,
+        client: httpx.AsyncClient,
+        instrument: dict[str, Any],
+        headers: dict[str, str],
+    ) -> dict[str, Any]:
+        response = await client.get(
+            self._security_url(instrument),
+            headers=headers,
+            params={"iss.meta": "off", "iss.only": "marketdata,securities"},
+        )
+        response.raise_for_status()
+        payload = response.json()
+        rows = self._table_rows(payload, "marketdata")
+        if not rows:
+            raise AdapterError(f"MOEX marketdata has no rows for {instrument['secid']}")
+        row = rows[0]
+        status_field = str(instrument.get("trading_status_field") or "TRADINGSTATUS").strip()
+        status = str(row.get(status_field) or "").strip()
+        if not status and status_field != "TRADINGSESSION":
+            status_field = "TRADINGSESSION"
+            status = str(row.get(status_field) or "").strip()
+        if not status:
+            raise AdapterError(f"MOEX marketdata has no trading status for {instrument['secid']}")
+        return {
+            "status": status,
+            "status_field": status_field,
+            "time": row.get("TIME") or row.get("UPDATETIME"),
+            "systime": row.get("SYSTIME"),
         }
 
     async def _fetch_candle_rows(
@@ -387,6 +471,71 @@ class MoexAdapter(BaseAdapter):
 
         return observations
 
+    def _raw_observations_to_table(
+        self,
+        observations: list[RawObservationIn],
+        *,
+        instrument: dict[str, Any],
+        loaded_at: datetime,
+    ) -> list[ObservationIn]:
+        table_observations: list[ObservationIn] = []
+        for observation in observations:
+            if observation.value_numeric is None:
+                continue
+            if self._is_daily_observation(observation):
+                reference_start, reference_end = self._daily_session_period(observation, instrument)
+                published_at = reference_end
+            else:
+                reference_start = observation.period_start or observation.observed_at
+                reference_end = observation.period_end or reference_start
+                published_at = self._intraday_published_at(reference_end, loaded_at, instrument)
+            table_observations.append(
+                ObservationIn(
+                    series_code=observation.series_code,
+                    source_code=observation.source_code,
+                    reference_date=reference_start.date(),
+                    reference_start=reference_start,
+                    reference_end=reference_end,
+                    value=observation.value_numeric,
+                    published_at=published_at,
+                )
+            )
+        return table_observations
+
+    @staticmethod
+    def _intraday_published_at(
+        reference_end: datetime,
+        loaded_at: datetime,
+        instrument: dict[str, Any],
+    ) -> datetime:
+        max_live_lag = timedelta(seconds=float(instrument.get("live_published_at_max_lag_seconds", 3600)))
+        if reference_end <= loaded_at and loaded_at - reference_end <= max_live_lag:
+            return loaded_at
+        return reference_end
+
+    @staticmethod
+    def _is_daily_observation(observation: RawObservationIn) -> bool:
+        raw_payload = observation.raw_payload or {}
+        try:
+            return int(raw_payload.get("interval_minutes") or 0) >= 24 * 60
+        except (TypeError, ValueError):
+            return False
+
+    def _daily_session_period(
+        self,
+        observation: RawObservationIn,
+        instrument: dict[str, Any],
+    ) -> tuple[datetime, datetime]:
+        exchange_tz = self._exchange_timezone(instrument)
+        session_date = observation.observed_at.astimezone(exchange_tz).date()
+        start_time = self._time_config(instrument, "daily_session_start_time", "07:00")
+        end_time = self._time_config(instrument, "daily_session_end_time", "23:50")
+        reference_start = datetime.combine(session_date, start_time, tzinfo=exchange_tz)
+        reference_end = datetime.combine(session_date, end_time, tzinfo=exchange_tz)
+        if reference_end < reference_start:
+            reference_end += timedelta(days=1)
+        return reference_start, reference_end
+
     def _resolve_instruments(self, context: FetchContext) -> list[dict[str, Any]]:
         spec = context.source.scrape
         if spec is None:
@@ -436,6 +585,15 @@ class MoexAdapter(BaseAdapter):
             f"/markets/{instrument['market']}"
             f"/boards/{instrument['board']}"
             f"/securities/{instrument['secid']}/candles.json"
+        )
+
+    def _security_url(self, instrument: dict[str, Any]) -> str:
+        return (
+            f"{str(instrument.get('iss_base_url') or self.iss_base_url).rstrip('/')}"
+            f"/engines/{instrument['engine']}"
+            f"/markets/{instrument['market']}"
+            f"/boards/{instrument['board']}"
+            f"/securities/{instrument['secid']}.json"
         )
 
     @staticmethod
@@ -492,6 +650,14 @@ class MoexAdapter(BaseAdapter):
         if explicit is not None and bool(instrument.get("backfill_from_start", False)):
             return explicit
 
+        if bool(instrument.get("start_from_current_session", False)):
+            exchange_tz = self._exchange_timezone(instrument)
+            local_now = now_utc.astimezone(exchange_tz)
+            session_start = datetime.combine(local_now.date(), self._session_anchor(instrument), tzinfo=exchange_tz)
+            if local_now < session_start:
+                return local_now.astimezone(timezone.utc)
+            return session_start.astimezone(timezone.utc)
+
         lookback_days = int(instrument.get("initial_lookback_days") or 5)
         start_from = now_utc - timedelta(days=lookback_days)
         if spec is not None and spec.start_date is not None and bool(instrument.get("backfill_from_start", False)):
@@ -529,6 +695,23 @@ class MoexAdapter(BaseAdapter):
             return time.fromisoformat(raw)
         except ValueError as exc:
             raise AdapterError(f"invalid MOEX session_anchor_time: {raw}") from exc
+
+    @staticmethod
+    def _trading_status_open_values(instrument: dict[str, Any]) -> set[str]:
+        raw_statuses = instrument.get("open_trading_statuses") or ["T"]
+        if isinstance(raw_statuses, str):
+            values = [part.strip() for part in raw_statuses.split(",")]
+        else:
+            values = [str(part).strip() for part in raw_statuses]
+        return {value for value in values if value}
+
+    @staticmethod
+    def _time_config(instrument: dict[str, Any], key: str, default: str) -> time:
+        raw = str(instrument.get(key) or default)
+        try:
+            return time.fromisoformat(raw)
+        except ValueError as exc:
+            raise AdapterError(f"invalid MOEX {key}: {raw}") from exc
 
     @staticmethod
     def _parse_moex_datetime(value: Any, exchange_tz: ZoneInfo) -> datetime | None:

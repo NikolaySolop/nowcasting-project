@@ -1,17 +1,20 @@
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import httpx
 
 from ingestion.adapters.base import AdapterError, BaseAdapter, FetchContext, FetchResult
-from ingestion.schemas.observations import ObservationKind, RawObservationIn
+from ingestion.schemas.observations import ObservationIn, ObservationKind, RawObservationIn
 
 
 class EiaAdapter(BaseAdapter):
     name = "eia"
     api_base_url = "https://api.eia.gov/v2"
+    new_york_tz = ZoneInfo("America/New_York")
+    central_tz = ZoneInfo("America/Chicago")
 
     async def fetch(self, context: FetchContext) -> FetchResult:
         spec = context.source.scrape
@@ -49,9 +52,17 @@ class EiaAdapter(BaseAdapter):
         if not rows:
             raise AdapterError(f"EIA API returned no rows for {series_id}")
 
+        loaded_at = datetime.now(timezone.utc)
+        store_in_observations = bool(extra.get("store_in_observations", False))
         observations = self._to_observations(context, rows, extra)
         return FetchResult(
-            observations=observations,
+            observations=[] if store_in_observations else observations,
+            table_observations=(
+                self._to_table_observations(context, observations, extra, loaded_at=loaded_at)
+                if store_in_observations
+                else []
+            ),
+            loaded_at=loaded_at,
             raw_payload={
                 "url": url,
                 "status_code": response.status_code,
@@ -61,6 +72,171 @@ class EiaAdapter(BaseAdapter):
                 "api_version": payload.get("apiVersion"),
             },
         )
+
+    def _to_table_observations(
+        self,
+        context: FetchContext,
+        observations: list[RawObservationIn],
+        extra: dict[str, Any],
+        *,
+        loaded_at: datetime,
+    ) -> list[ObservationIn]:
+        frequency = str(extra.get("frequency") or extra.get("frequency_code") or "").lower()
+        backfill_run = self._is_backfill_run(context, observations)
+        table_observations: list[ObservationIn] = []
+        for observation in observations:
+            if observation.value_numeric is None:
+                continue
+            reference_date, reference_start, reference_end = self._reference_period(
+                observation.period_start or observation.observed_at,
+                frequency,
+                extra,
+            )
+            published_at = self._table_published_at(
+                reference_end,
+                extra,
+                loaded_at=loaded_at,
+                backfill_run=backfill_run,
+            )
+            table_observations.append(
+                ObservationIn(
+                    series_code=observation.series_code,
+                    source_code=observation.source_code,
+                    reference_date=reference_date,
+                    reference_start=reference_start,
+                    reference_end=reference_end,
+                    value=observation.value_numeric,
+                    published_at=observation.publication_at or published_at,
+                )
+            )
+        return table_observations
+
+    def _table_published_at(
+        self,
+        release_after: datetime,
+        extra: dict[str, Any],
+        *,
+        loaded_at: datetime,
+        backfill_run: bool,
+    ) -> datetime:
+        mode = str(extra.get("backfill_published_at") or "").lower()
+        if not backfill_run:
+            return loaded_at
+        if mode == "next_wednesday_1030_et":
+            return self._next_wednesday_1030_et(release_after)
+        if mode == "friday_1200_ct":
+            return self._friday_1200_ct(release_after)
+        return loaded_at
+
+    @staticmethod
+    def _is_backfill_run(context: FetchContext, observations: list[RawObservationIn]) -> bool:
+        if not observations:
+            return False
+
+        latest_by_series = [
+            context.latest_observed_at_by_series.get(observation.series_code)
+            for observation in observations
+        ]
+        latest_by_series = [latest for latest in latest_by_series if latest is not None]
+        if not latest_by_series:
+            return True
+
+        start_date = context.source.scrape.start_date if context.source.scrape else None
+        if start_date is None:
+            return False
+        if start_date.tzinfo is None:
+            start_date = start_date.replace(tzinfo=timezone.utc)
+        bootstrap_latest = start_date - timedelta(days=1)
+        return all(latest <= bootstrap_latest for latest in latest_by_series)
+
+    def _next_wednesday_1030_et(self, reference_start: datetime) -> datetime:
+        reference_date = reference_start.astimezone(self.new_york_tz).date()
+        days_until_wednesday = (2 - reference_date.weekday()) % 7
+        if days_until_wednesday == 0:
+            days_until_wednesday = 7
+        release_date = reference_date + timedelta(days=days_until_wednesday)
+        return datetime(
+            release_date.year,
+            release_date.month,
+            release_date.day,
+            10,
+            30,
+            tzinfo=self.new_york_tz,
+        )
+
+    def _friday_1200_ct(self, reference_start: datetime) -> datetime:
+        reference_date = reference_start.astimezone(self.central_tz).date()
+        days_until_friday = (4 - reference_date.weekday()) % 7
+        release_date = reference_date + timedelta(days=days_until_friday)
+        return datetime(
+            release_date.year,
+            release_date.month,
+            release_date.day,
+            12,
+            0,
+            tzinfo=self.central_tz,
+        )
+
+    @staticmethod
+    def _reference_period(reference_at: datetime, frequency: str, extra: dict[str, Any]):
+        report_week = str(extra.get("report_week") or "").lower()
+        period_date_role = str(extra.get("period_date_role") or "").lower()
+        if (
+            frequency in {"weekly", "week", "w"}
+            and report_week == "saturday_friday"
+            and period_date_role == "week_end"
+        ):
+            reference_end = reference_at.replace(hour=23, minute=59, second=59, microsecond=999999)
+            reference_start = (reference_end - timedelta(days=6)).replace(
+                hour=0,
+                minute=0,
+                second=0,
+                microsecond=0,
+            )
+            return reference_end.date(), reference_start, reference_end
+
+        if (
+            frequency in {"weekly", "week", "w"}
+            and report_week == "monday_friday"
+            and period_date_role == "week_end"
+        ):
+            reference_end = reference_at.replace(hour=23, minute=59, second=59, microsecond=999999)
+            reference_start = (reference_end - timedelta(days=4)).replace(
+                hour=0,
+                minute=0,
+                second=0,
+                microsecond=0,
+            )
+            return reference_end.date(), reference_start, reference_end
+
+        reference_start = reference_at
+        reference_end = EiaAdapter._reference_end(reference_start, frequency)
+        return reference_start.date(), reference_start, reference_end
+
+    @staticmethod
+    def _reference_end(reference_start: datetime, frequency: str) -> datetime:
+        if frequency in {"weekly", "week", "w"}:
+            return reference_start + timedelta(days=7) - timedelta(microseconds=1)
+        if frequency in {"monthly", "month", "m"}:
+            month = reference_start.month + 1
+            year = reference_start.year
+            if month == 13:
+                month = 1
+                year += 1
+            return datetime(
+                year,
+                month,
+                1,
+                tzinfo=reference_start.tzinfo,
+            ) - timedelta(microseconds=1)
+        if frequency in {"annual", "yearly", "year", "a", "y"}:
+            return datetime(
+                reference_start.year + 1,
+                1,
+                1,
+                tzinfo=reference_start.tzinfo,
+            ) - timedelta(microseconds=1)
+        return reference_start + timedelta(days=1) - timedelta(microseconds=1)
 
     def _request_params(self, api_key: str, extra: dict[str, Any]) -> dict[str, Any]:
         params: dict[str, Any] = {"api_key": api_key}

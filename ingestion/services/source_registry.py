@@ -8,14 +8,13 @@ from ingestion.adapters.cbr_secinfo import CbrSecInfoAdapter
 from ingestion.adapters.cbr_trade_balance import CbrTradeBalanceAdapter
 from ingestion.adapters.eia import EiaAdapter
 from ingestion.adapters.exchangerates import ExchangeRatesAdapter
-from ingestion.adapters.fred import FredAdapter
+from ingestion.adapters.fred import FredAdapter, FredObservationsAdapter, FredSofrAdapter
 from ingestion.adapters.manual_csv import ManualCsvAdapter
 from ingestion.adapters.minfin_oilgas import MinfinOilGasAdapter
 from ingestion.adapters.tradingview import TradingViewAdapter
 from ingestion.adapters.moex import MoexAdapter
-from ingestion.adapters.profinance import ProFinanceAdapter
-from ingestion.adapters.rosstat_industrial import RosstatIndustrialAdapter
-from ingestion.adapters.rosstat_retail_sales import RosstatRetailSalesAdapter
+from ingestion.adapters.rosstat_cpi_live import RosstatCpiLiveAdapter, RosstatIndustrialProducerCpiLiveAdapter
+from ingestion.adapters.rosstat_retail_sales import RosstatRetailMomLiveAdapter
 from ingestion.adapters.ru_tax_dummy_calendar import RuTaxDummyCalendarAdapter
 from ingestion.adapters.web import WebPageAdapter
 from ingestion.adapters.yahoo import YahooAdapter
@@ -36,15 +35,17 @@ class SourceRegistry:
         self.register_adapter(MoexAdapter.name, MoexAdapter)
         self.register_adapter(EiaAdapter.name, EiaAdapter)
         self.register_adapter(FredAdapter.name, FredAdapter)
+        self.register_adapter(FredObservationsAdapter.name, FredObservationsAdapter)
+        self.register_adapter(FredSofrAdapter.name, FredSofrAdapter)
         self.register_adapter(ExchangeRatesAdapter.name, ExchangeRatesAdapter)
         self.register_adapter(YahooAdapter.name, YahooAdapter)
         self.register_adapter(ManualCsvAdapter.name, ManualCsvAdapter)
         self.register_adapter(MinfinOilGasAdapter.name, MinfinOilGasAdapter)
-        self.register_adapter(RosstatIndustrialAdapter.name, RosstatIndustrialAdapter)
-        self.register_adapter(RosstatRetailSalesAdapter.name, RosstatRetailSalesAdapter)
+        self.register_adapter(RosstatCpiLiveAdapter.name, RosstatCpiLiveAdapter)
+        self.register_adapter(RosstatIndustrialProducerCpiLiveAdapter.name, RosstatIndustrialProducerCpiLiveAdapter)
+        self.register_adapter(RosstatRetailMomLiveAdapter.name, RosstatRetailMomLiveAdapter)
         self.register_adapter(RuTaxDummyCalendarAdapter.name, RuTaxDummyCalendarAdapter)
         self.register_adapter(TradingViewAdapter.name, TradingViewAdapter)
-        self.register_adapter(ProFinanceAdapter.name, ProFinanceAdapter)
 
     def register_adapter(self, name: str, factory: AdapterFactory) -> None:
         self._adapters[name] = factory
@@ -56,6 +57,20 @@ class SourceRegistry:
         try:
             return self._sources[source_code]
         except KeyError as exc:
+            matches = [
+                source
+                for source in self._sources.values()
+                if (
+                    source.scrape is not None
+                    and source.scrape.series_code == source_code
+                    or any(series.series_code == source_code for series in source.series)
+                )
+            ]
+            if len(matches) == 1:
+                return matches[0]
+            if len(matches) > 1:
+                matched_codes = ", ".join(source.source_code for source in matches)
+                raise KeyError(f"series_code is ambiguous: {source_code} matches {matched_codes}") from exc
             raise KeyError(f"source is not registered: {source_code}") from exc
 
     def list_sources(self, *, enabled_only: bool = False) -> list[SourceDefinition]:

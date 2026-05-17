@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from enum import Enum
 from typing import Any
@@ -53,6 +53,43 @@ class RawObservationIn(BaseModel):
             self.publication_at,
             self.value_numeric,
             self.value_text,
+        )
+
+
+class ObservationIn(BaseModel):
+    series_code: str = Field(min_length=1, max_length=50)
+    source_code: str = Field(min_length=1, max_length=50)
+    reference_date: date | None = None
+    reference_start: datetime
+    reference_end: datetime
+    value: Decimal
+    published_at: datetime
+    compress_equal_runs: bool = False
+    skip_equal_to_previous: bool = False
+
+    @field_validator("reference_start", "reference_end", "published_at")
+    @classmethod
+    def ensure_timezone(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value
+
+    @model_validator(mode="after")
+    def ensure_reference_date(self) -> "ObservationIn":
+        if self.reference_date is None:
+            self.reference_date = self.reference_start.date()
+        return self
+
+    @property
+    def duplicate_key(self) -> tuple[object, ...]:
+        return (
+            self.series_code,
+            self.source_code,
+            self.reference_date,
+            self.reference_start,
+            self.reference_end,
+            self.published_at,
+            self.value,
         )
 
 

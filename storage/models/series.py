@@ -8,7 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from storage.db.base import Base, UUIDMixin, TimestampMixin
 
-from storage.models.enums import BlockCode, Frequency, AssetClass, TransformType
+from storage.models.enums import Frequency, TransformType
 
 
 class Series(Base, UUIDMixin, TimestampMixin):
@@ -25,45 +25,33 @@ class Series(Base, UUIDMixin, TimestampMixin):
         String(255),
         nullable=False
     )
-    block_code: Mapped[BlockCode | None] = mapped_column(
-        SQLEnum(
-            BlockCode,
-            name="block_code_enum",
-            values_callable=lambda enum_cls: [item.value for item in enum_cls],
-            native_enum=False,
-            create_constraint=True,
-        )
-    )
-    target_frequency: Mapped[Frequency | None] = mapped_column(
+    frequency: Mapped[Frequency | None] = mapped_column(
         SQLEnum(
             Frequency,
-            name="target_frequency_enum",
-            values_callable=lambda enum_cls: [item.value for item in enum_cls],
-            native_enum=False,
-            create_constraint=True,
-        )
-    )
-    asset_class: Mapped[AssetClass | None] = mapped_column(
-        SQLEnum(
-            AssetClass,
-            name="asset_class_enum",
+            name="series_frequency_enum",
             values_callable=lambda enum_cls: [item.value for item in enum_cls],
             native_enum=False,
             create_constraint=True,
         ),
         nullable=True,
     )
-    unit: Mapped[str | None] = mapped_column(
+
+    group_code: Mapped[str | None] = mapped_column(
         Text,
         nullable=True,
     )
 
-    currency: Mapped[str | None] = mapped_column(
+    subgroup_code: Mapped[str | None] = mapped_column(
         Text,
         nullable=True,
     )
 
-    country: Mapped[str | None] = mapped_column(
+    description: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
+    units: Mapped[str | None] = mapped_column(
         Text,
         nullable=True,
     )
@@ -77,18 +65,6 @@ class Series(Base, UUIDMixin, TimestampMixin):
             create_constraint=True,
         ),
         nullable=True,
-    )
-
-    is_market_data: Mapped[bool] = mapped_column(
-        Boolean,
-        server_default="false",
-        nullable=False,
-    )
-
-    is_revision_prone: Mapped[bool] = mapped_column(
-        Boolean,
-        server_default="false",
-        nullable=False,
     )
 
     is_model_input: Mapped[bool] = mapped_column(

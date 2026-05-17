@@ -1,19 +1,33 @@
 import os
-from datetime import datetime, timezone
+from datetime import datetime, time, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import httpx
 
 from ingestion.adapters.base import AdapterError, BaseAdapter, FetchContext, FetchResult
-from ingestion.schemas.observations import ObservationKind, RawObservationIn
+from ingestion.schemas.observations import ObservationIn, ObservationKind, RawObservationIn
 
 
 class FredAdapter(BaseAdapter):
     name = "fred"
     api_base_url = "https://api.stlouisfed.org/fred/series/observations"
+    dubai_tz = ZoneInfo("Asia/Dubai")
+    new_york_tz = ZoneInfo("America/New_York")
 
     async def fetch(self, context: FetchContext) -> FetchResult:
+        url, response, payload, rows, fred_series_id = await self._fetch_rows(context)
+        observations = self._to_observations(context, rows, fred_series_id)
+        return FetchResult(
+            observations=observations,
+            raw_payload=self._raw_payload(url, response, payload, fred_series_id, rows),
+        )
+
+    async def _fetch_rows(
+        self,
+        context: FetchContext,
+    ) -> tuple[str, httpx.Response, Any, list[dict[str, Any]], str]:
         spec = context.source.scrape
         if spec is None:
             raise AdapterError(f"source {context.source.source_code} has no FRED scrape spec")
@@ -48,18 +62,24 @@ class FredAdapter(BaseAdapter):
         if not rows:
             raise AdapterError(f"FRED API returned no rows for {fred_series_id}")
 
-        observations = self._to_observations(context, rows, fred_series_id)
-        return FetchResult(
-            observations=observations,
-            raw_payload={
-                "url": url,
-                "status_code": response.status_code,
-                "content_type": response.headers.get("content-type"),
-                "fred_series_id": fred_series_id,
-                "row_count": len(rows),
-                "count": payload.get("count") if isinstance(payload, dict) else None,
-            },
-        )
+        return url, response, payload, rows, fred_series_id
+
+    @staticmethod
+    def _raw_payload(
+        url: str,
+        response: httpx.Response,
+        payload: Any,
+        fred_series_id: str,
+        rows: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        return {
+            "url": url,
+            "status_code": response.status_code,
+            "content_type": response.headers.get("content-type"),
+            "fred_series_id": fred_series_id,
+            "row_count": len(rows),
+            "count": payload.get("count") if isinstance(payload, dict) else None,
+        }
 
     def _request_params(
         self,
@@ -191,3 +211,62 @@ class FredAdapter(BaseAdapter):
         code = payload.get("error_code") or "FRED_API_ERROR"
         message = payload.get("error_message") or payload
         raise AdapterError(f"FRED API error for {fred_series_id}: {code}: {message}")
+
+
+class FredObservationsAdapter(FredAdapter):
+    name = "fred_observations"
+
+    async def fetch(self, context: FetchContext) -> FetchResult:
+        url, response, payload, rows, fred_series_id = await self._fetch_rows(context)
+        observations = self._to_table_observations(context, rows)
+        return FetchResult(
+            table_observations=observations,
+            raw_payload=self._raw_payload(url, response, payload, fred_series_id, rows),
+        )
+
+    def _to_table_observations(
+        self,
+        context: FetchContext,
+        rows: list[dict[str, Any]],
+    ) -> list[ObservationIn]:
+        spec = context.source.scrape
+        if spec is None:
+            return []
+
+        target_series_code = spec.series_code or context.source.source_code
+        latest_reference_start = context.latest_observed_at_by_series.get(target_series_code)
+
+        observations: list[ObservationIn] = []
+        for row in rows:
+            reference_start = row["observed_at"]
+            if latest_reference_start is not None and reference_start <= latest_reference_start:
+                continue
+
+            observations.append(
+                ObservationIn(
+                    series_code=target_series_code,
+                    source_code=context.source.source_code,
+                    reference_start=reference_start,
+                    reference_end=self._reference_end(reference_start),
+                    value=row["value"],
+                    published_at=self._published_at(reference_start),
+                )
+            )
+        return observations
+
+    @staticmethod
+    def _reference_end(reference_start: datetime) -> datetime:
+        return reference_start + timedelta(days=1) - timedelta(microseconds=1)
+
+    def _published_at(self, reference_start: datetime) -> datetime:
+        next_date = reference_start.astimezone(timezone.utc).date() + timedelta(days=1)
+        published_in_new_york = datetime.combine(
+            next_date,
+            time(hour=8),
+            tzinfo=self.new_york_tz,
+        )
+        return published_in_new_york.astimezone(self.dubai_tz)
+
+
+class FredSofrAdapter(FredObservationsAdapter):
+    name = "fred_sofr"
